@@ -16,7 +16,7 @@ use io::{BufRead, Write};
 use super::Weight;
 use crate::blockdata::script;
 use crate::blockdata::transaction::{Transaction, Txid, Wtxid};
-use crate::consensus::{encode, Decodable, Encodable, Params};
+use crate::consensus::{encode, Decodable, Encodable};
 use crate::internal_macros::{impl_consensus_encoding, impl_hashencode};
 use crate::pow::{CompactTarget, Target, Work};
 use crate::{merkle_tree, VarInt};

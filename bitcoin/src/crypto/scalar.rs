@@ -35,7 +35,9 @@ const MAX_U256: [u8; 32] = [0xFF; 32];
 /// appropriate.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum MaybeScalar {
+    /// Represents the zero form of a scalar
     Zero,
+    /// Represents a non-zero scalar. Composes [`Scalar`]
     Valid(Scalar),
 }
 
@@ -243,6 +245,8 @@ const CURVE_ORDER_MINUS_ONE_BYTES: [u8; 32] = [
     0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B, 0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x40,
 ];
 
+/// Represents a Non-zero scalar.
+/// Composes [`k256::NonZeroScalar`]
 #[derive(Copy, Clone)]
 pub struct Scalar {
     pub(crate) inner: k256::NonZeroScalar,
@@ -311,6 +315,7 @@ impl Scalar {
         bool::from(self.ct_gt(&Self::max()))
     }
 
+    /// Converts this scalar to a [`k256::SecretKey`]
     pub fn to_secret_key(self) -> Result<SecretKey, CryptoError> {
         k256::SecretKey::from_slice(&self.serialize()).map_err(|_| CryptoError::InvalidSecretKey)
     }

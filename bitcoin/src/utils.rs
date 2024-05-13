@@ -2,23 +2,6 @@ use k256::{PublicKey as k256PublicKey, SecretKey};
 
 use crate::{CryptoError, MaybePublicKey, PublicKey, Scalar, G};
 
-fn curve_order_plus(num: i8) -> [u8; 32] {
-    // let mut bytes = Scalar::curve_order().serialize();
-
-    // let carry: bool;
-    // (bytes[31], carry) = bytes[31].overflowing_add_signed(num);
-
-    // if carry {
-    //     if num >= 0 {
-    //         bytes[30] += 1;
-    //     } else {
-    //         bytes[30] -= 1;
-    //     }
-    // }
-    // bytes
-    [0; 32]
-}
-
 /// Tweaks a [`SecretKey`] by adding `tweak` modulo the curve order.
 ///
 /// # Errors

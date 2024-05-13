@@ -15,7 +15,6 @@ use core::iter::FusedIterator;
 use hashes::{sha256t_hash_newtype, Hash, HashEngine};
 use internals::write_err;
 use io::Write;
-use k256::{NonZeroScalar, Secp256k1};
 
 use crate::consensus::Encodable;
 use crate::crypto::key::{TapTweak, TweakedPublicKey, UntweakedPublicKey, XOnlyPublicKey};

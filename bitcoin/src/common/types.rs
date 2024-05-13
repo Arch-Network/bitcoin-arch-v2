@@ -160,6 +160,7 @@ pub trait ThirtyTwoByteHash {
     fn into_32(self) -> [u8; 32];
 }
 
+/// Implements the ThirtyTwoByteHash crate for code
 #[macro_export]
 macro_rules! impl_thirty_two_byte_hash {
     ($ty:ident) => {
@@ -264,6 +265,7 @@ impl Message {
         }
     }
 
+    /// Returns a message as a byte slice
     pub fn as_bytes(&self) -> &[u8] {
         &self.0[..]
     }

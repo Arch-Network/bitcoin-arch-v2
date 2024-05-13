@@ -5,7 +5,6 @@
 //! This module provides keys used in Bitcoin that can be roundtrip
 //! (de)serialized.
 
-use core::ops;
 use core::{
     fmt::{self, Write as _},
     str::FromStr,
@@ -16,19 +15,14 @@ use hex::{FromHex, HexToArrayError};
 use internals::array_vec::ArrayVec;
 use internals::write_err;
 use io::{Read, Write};
-// use k256::ecdsa::{
-//     signature::{Signer as EcdsaSigner, Verifier as EcdsaVerifier},
-//     Signature as EcdsaSignature, SigningKey as EcdsaSigningKey, VerifyingKey as EcdsaVerifyingKey,
-// };
 use k256::elliptic_curve::point::AffineCoordinates as _;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 use k256::elliptic_curve::subtle::Choice;
 use k256::schnorr::{
-    signature::{Signer as SchnorrSigner, Verifier as SchnorrVerifier},
-    Signature as SchnorrSignature, SigningKey as SchnorrSigningKey,
+    signature::Verifier as SchnorrVerifier, SigningKey as SchnorrSigningKey,
     VerifyingKey as SchnorrVerifyingKey,
 };
-use k256::{NonZeroScalar, SecretKey};
+use k256::SecretKey;
 use once_cell::sync::Lazy;
 use subtle::ConditionallySelectable;
 
@@ -43,6 +37,7 @@ use crate::Parity;
 use crate::{crypto, CryptoError};
 use crate::{ecdsa, prelude::*};
 
+#[cfg(feature = "rand-std")]
 use rand::thread_rng;
 
 const GENERATOR_POINT_BYTES: [u8; 65] = [
@@ -89,22 +84,18 @@ impl std::ops::Deref for G {
     }
 }
 
-#[rustfmt::skip]                // Keep public re-exports separate.
-// pub use secp256k1::{constants, Keypair, Parity, Secp256k1, Verification, XOnlyPublicKey};
-
-#[cfg(feature = "rand-std")]
-pub use secp256k1::rand;
-
 use super::error::InvalidPointBytes;
 use super::scalar::Scalar;
 use super::utils::from_hex;
 
+/// Represents the X coordinates of [`PublicKey`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct XOnlyPublicKey {
     inner: [u8; 32],
 }
 
 impl XOnlyPublicKey {
+    /// Gets an [`XOnlyPublicKey`] from [`Keypair`]
     pub fn from_keypair(keypair: &Keypair) -> (Self, Parity) {
         let public_key = PublicKey::from(keypair);
         let x_only_public_key = Self::from(public_key);
@@ -113,10 +104,14 @@ impl XOnlyPublicKey {
         (x_only_public_key, parity)
     }
 
+    /// Serializes [`XOnlyPublicKey`] to a 32 byte u8 array
     pub fn serialize(&self) -> [u8; 32] {
         self.inner.clone()
     }
 
+    /// Tweaks an [`XOnlyPublicKey`] by a [`Scalar`]
+    ///
+    /// Returns the tweaked key and a [`Parity`]
     pub fn add_tweak(self, tweak: Scalar) -> Result<(XOnlyPublicKey, Parity), String> {
         let public_key = PublicKey::from(self);
         let (tweaked_public_key, parity) = public_key.add_tweak(tweak)?;
@@ -124,6 +119,9 @@ impl XOnlyPublicKey {
         Ok((tweaked_x_only, parity))
     }
 
+    /// Checks if an [`XOnlyPublicKey`] was tweaked using the passed in tweak
+    ///
+    /// Performs a subtraction and equates the recomputed tweak with the original tweak
     pub fn tweak_add_check(
         &self,
         tweaked_key: XOnlyPublicKey,
@@ -741,17 +739,6 @@ impl CompressedPublicKey {
         verifying_key
             .verify(msg.as_bytes(), &sig.signature)
             .map_err(|_| CryptoError::IncorrectSignature)
-        // verifying_key
-
-        // let mut rng = rand::thread_rng();
-        // let signing_key = SigningKey::random(&mut rng);
-        // let msg = "This message is for everyone!";
-        // let signature: Signature = signing_key.sign(msg.as_bytes());
-
-        // let msg = "This message is for everyone";
-        // let verifying_key = VerifyingKey::from(&signing_key); // Serialize with `::to_encoded_point()`
-        // assert!(verifying_key.verify(msg.as_bytes(), &signature).is_ok());
-        // Ok(())
     }
 }
 
@@ -1147,6 +1134,9 @@ impl fmt::Display for TweakedPublicKey {
     }
 }
 
+/// Keypair representation of a Signing and VerifyingKey.
+///
+/// Composes [`k256::schnorr::SigningKey`]
 #[derive(Clone)]
 pub struct Keypair {
     signing_key: SchnorrSigningKey,
@@ -1168,10 +1158,12 @@ impl Keypair {
         Self { signing_key }
     }
 
+    /// Returns a [`k256::schnorr::VerifyingKey`] from a [`Keypair`]
     pub fn verifying_key(&self) -> &SchnorrVerifyingKey {
         self.signing_key.verifying_key()
     }
 
+    /// Gets a [`Keypair`] from a secret key
     pub fn from_secret_key(sec_key: &SecretKey) -> Self {
         let signing_key = SchnorrSigningKey::from(sec_key);
         Self { signing_key }
@@ -1195,7 +1187,8 @@ impl Keypair {
         self.signing_key
     }
 
-    pub fn add_xonly_tweak(self, mut tweak: Scalar) -> Result<Self, CryptoError> {
+    /// Tweaks the [`Keypair`] with a tweak
+    pub fn add_xonly_tweak(self, tweak: Scalar) -> Result<Self, CryptoError> {
         let sec_key = Scalar::from(self.signing_key.as_nonzero_scalar());
 
         let mut tweaked_scalar_bytes = add_tweak_to_scalar(sec_key, tweak)?.serialize();
@@ -1209,6 +1202,7 @@ impl Keypair {
         Ok(Keypair { signing_key })
     }
 
+    /// Gets a [`Keypair`] from a secret key string
     pub fn from_seckey_str(s: &str) -> Result<Keypair, CryptoError> {
         let mut res = [0u8; common_constants::SECRET_KEY_SIZE];
         match from_hex(s, &mut res) {
@@ -1219,12 +1213,14 @@ impl Keypair {
         }
     }
 
+    /// Gets a [`Keypair`] from a secret key slice
     pub fn from_seckey_slice(data: &[u8]) -> Result<Keypair, CryptoError> {
         Ok(Keypair::from_secret_key(
             &SecretKey::from_slice(data).map_err(|_| CryptoError::InvalidSecretKey)?,
         ))
     }
 
+    /// Gets a [`k256::SecretKey`] from a [`Keypair`]
     pub fn secret_key(&self) -> k256::SecretKey {
         k256::SecretKey::from(self.signing_key.as_nonzero_scalar())
     }
