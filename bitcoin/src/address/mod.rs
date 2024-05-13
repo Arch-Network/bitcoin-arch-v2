@@ -636,8 +636,6 @@ impl Address {
         let payload = self.payload_as_bytes();
         let xonly_pubkey = XOnlyPublicKey::from(pubkey.inner);
 
-        let segwit = *segwit_redeem_hash(&pubkey_hash).as_byte_array();
-
         (*pubkey_hash.as_byte_array() == *payload)
             || (xonly_pubkey.serialize() == *payload)
             || (*segwit_redeem_hash(&pubkey_hash).as_byte_array() == *payload)
