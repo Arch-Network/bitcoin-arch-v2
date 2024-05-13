@@ -6,7 +6,6 @@
 //! at <https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki>.
 //!
 
-use core::array::TryFromSliceError;
 use core::ops::Index;
 use core::str::FromStr;
 use core::{fmt, slice};
@@ -20,7 +19,6 @@ use crate::crypto::key::{CompressedPublicKey, Keypair, PrivateKey};
 use crate::internal_macros::impl_bytes_newtype;
 use crate::key::PublicKey;
 use crate::network::NetworkKind;
-use crate::psbt::serialize::Serialize;
 use crate::utils::{add_exp_tweak, add_tweak};
 use crate::{prelude::*, CryptoError};
 use crate::{Scalar, XOnlyPublicKey};
@@ -67,17 +65,22 @@ hash_newtype! {
     pub struct XKeyIdentifier(hash160::Hash);
 }
 
+/// XPrivateKey composes a u8 array of size 32 bytes
+/// 
+/// Represents an Extended Private Key
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-struct XPrivateKey([u8; 32]);
+pub struct XPrivateKey([u8; 32]);
 
 impl XPrivateKey {
-    fn from_slice(value: &[u8]) -> Result<Self, CryptoError> {
+    /// Converts to this type from a byte slice
+    pub fn from_slice(value: &[u8]) -> Result<Self, CryptoError> {
         SecretKey::from_slice(value).map_err(|_| CryptoError::InvalidSecretKey)?;
         let inner = <[u8; 32]>::try_from(value).map_err(|_| CryptoError::InvalidSecretKey)?;
         Ok(XPrivateKey(inner))
     }
 
-    fn from_secret_key(value: &SecretKey) -> Self {
+    /// Converts to this type from a [`k256::SecretKey`]
+    pub fn from_secret_key(value: &SecretKey) -> Self {
         let inner = value.to_bytes();
         let inner = inner.as_slice();
         XPrivateKey(
@@ -85,13 +88,13 @@ impl XPrivateKey {
                 .expect("XPrivateKey should not fail to convert to secret key"),
         )
     }
-}
 
-impl XPrivateKey {
+    /// Gets a [`k256::SecretKey`] from this type
     fn to_secret_key(self) -> k256::SecretKey {
         k256::SecretKey::from_slice(self.0.as_slice()).expect("should be a valid secret key")
     }
 
+    /// Gets a [`PublicKey`] from this type
     fn to_public_key(self) -> PublicKey {
         let sec_key = self.to_secret_key();
         let inner = k256::PublicKey::from_secret_scalar(&sec_key.to_nonzero_scalar());
@@ -676,6 +679,7 @@ impl Xpriv {
         }
     }
 
+    /// Converts this type to a [`PublicKey`]
     pub fn to_pub(self) -> PublicKey {
         self.private_key.to_public_key()
     }

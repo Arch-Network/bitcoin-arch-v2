@@ -24,11 +24,7 @@ use internals::write_err;
 use k256::ecdsa::{
     signature::Signer as EcdsaSigner, Signature as EcdsaSignature, SigningKey as EcdsaSigningKey,
 };
-use k256::schnorr::{
-    signature::{Signer as _, Verifier as _},
-    Signature as SchnorrSignature,
-};
-// use secp256k1::{Keypair, Message, Secp256k1, Signing, Verification};
+use k256::schnorr::Signature as SchnorrSignature;
 
 use crate::bip32::{self, KeySource, Xpriv, Xpub};
 use crate::blockdata::transaction::{self, Transaction, TxOut};
