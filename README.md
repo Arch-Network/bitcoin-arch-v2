@@ -12,9 +12,9 @@
     This enables the use of this library on architectures that do not natively support the C compiler such as Risc0.
     <br />
     ·
-    <a href="https://github.com/Arch-Network/bitcoin-arch-v2/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/leonardchinonso/bitcoin-k256/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     ·
-    <a href="https://github.com/Arch-Network/bitcoin-arch-v2/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/leonardchinonso/bitcoin-k256/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
   </p>
 </div>
 
@@ -87,7 +87,7 @@ Check out the [official bitcoin rust library](https://github.com/rust-bitcoin/ru
 <!-- ROADMAP -->
 ## Roadmap
 
-See the [open issues](https://github.com/Arch-Network/bitcoin-arch-v2/issues) for a full list of proposed features (and known issues).
+See the [open issues](https://github.com/leonardchinonso/bitcoin-k256/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -121,6 +121,6 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
-[contributors-url]: https://github.com/Arch-Network/bitcoin-arch-v2/graphs/contributors
-[issues-url]: https://github.com/Arch-Network/bitcoin-arch-v2/issues
+[contributors-url]: https://github.com/leonardchinonso/bitcoin-k256/graphs/contributors
+[issues-url]: https://github.com/leonardchinonso/bitcoin-k256/issues
 [Rust-url]: https://www.rust-lang.org/
