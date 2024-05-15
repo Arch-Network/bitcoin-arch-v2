@@ -1,7 +1,7 @@
 <a name="readme-top"></a>
 
-[!Contributors][contributors-url]
-[![Issues]][issues-url]
+[Contributors][contributors-url]
+[Issues][issues-url]
 
 <!-- PROJECT INFO -->
 <h3 align="center">Bitcoin K256</h3>
@@ -56,7 +56,7 @@
 
 ### Built With
 
-* [![Rust]][Rust-url]
+* [Rust][Rust-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
