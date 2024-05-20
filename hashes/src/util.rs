@@ -1,19 +1,31 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2018 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
 
 #[macro_export]
 /// Adds hexadecimal formatting implementation of a trait `$imp` to a given type `$ty`.
 macro_rules! hex_fmt_impl(
-    ($reverse:expr, $len:expr, $ty:ident) => (
-        $crate::hex_fmt_impl!($reverse, $len, $ty, );
+    ($reverse:expr, $ty:ident) => (
+        $crate::hex_fmt_impl!($reverse, $ty, );
     );
-    ($reverse:expr, $len:expr, $ty:ident, $($gen:ident: $gent:ident),*) => (
+    ($reverse:expr, $ty:ident, $($gen:ident: $gent:ident),*) => (
         impl<$($gen: $gent),*> $crate::_export::_core::fmt::LowerHex for $ty<$($gen),*> {
             #[inline]
             fn fmt(&self, f: &mut $crate::_export::_core::fmt::Formatter) -> $crate::_export::_core::fmt::Result {
                 if $reverse {
-                    $crate::hex::fmt_hex_exact!(f, $len, <Self as $crate::Hash>::as_byte_array(&self).iter().rev(), $crate::hex::Case::Lower)
+                    $crate::_export::_core::fmt::LowerHex::fmt(&self.0.backward_hex(), f)
                 } else {
-                    $crate::hex::fmt_hex_exact!(f, $len, <Self as $crate::Hash>::as_byte_array(&self), $crate::hex::Case::Lower)
+                    $crate::_export::_core::fmt::LowerHex::fmt(&self.0.forward_hex(), f)
                 }
             }
         }
@@ -22,9 +34,9 @@ macro_rules! hex_fmt_impl(
             #[inline]
             fn fmt(&self, f: &mut $crate::_export::_core::fmt::Formatter) -> $crate::_export::_core::fmt::Result {
                 if $reverse {
-                    $crate::hex::fmt_hex_exact!(f, $len, <Self as $crate::Hash>::as_byte_array(&self).iter().rev(), $crate::hex::Case::Upper)
+                    $crate::_export::_core::fmt::UpperHex::fmt(&self.0.backward_hex(), f)
                 } else {
-                    $crate::hex::fmt_hex_exact!(f, $len, <Self as $crate::Hash>::as_byte_array(&self), $crate::hex::Case::Upper)
+                    $crate::_export::_core::fmt::UpperHex::fmt(&self.0.forward_hex(), f)
                 }
             }
         }
@@ -39,7 +51,7 @@ macro_rules! hex_fmt_impl(
         impl<$($gen: $gent),*> $crate::_export::_core::fmt::Debug for $ty<$($gen),*> {
             #[inline]
             fn fmt(&self, f: &mut $crate::_export::_core::fmt::Formatter) -> $crate::_export::_core::fmt::Result {
-                write!(f, "{}", self)
+                write!(f, "{:#}", self)
             }
         }
     );
@@ -68,7 +80,7 @@ macro_rules! borrow_slice_impl(
 
 macro_rules! engine_input_impl(
     () => (
-        #[cfg(not(hashes_fuzz))]
+        #[cfg(not(fuzzing))]
         fn input(&mut self, mut inp: &[u8]) {
             while !inp.is_empty() {
                 let buf_idx = self.length % <Self as crate::HashEngine>::BLOCK_SIZE;
@@ -85,7 +97,7 @@ macro_rules! engine_input_impl(
             }
         }
 
-        #[cfg(hashes_fuzz)]
+        #[cfg(fuzzing)]
         fn input(&mut self, inp: &[u8]) {
             for c in inp {
                 self.buffer[0] ^= *c;
@@ -94,6 +106,8 @@ macro_rules! engine_input_impl(
         }
     )
 );
+
+
 
 /// Creates a new newtype around a [`Hash`] type.
 ///
@@ -127,7 +141,7 @@ macro_rules! engine_input_impl(
 /// You can add arbitrary doc comments or other attributes to the struct or it's field. Note that
 /// the macro already derives [`Copy`], [`Clone`], [`Eq`], [`PartialEq`],
 /// [`Hash`](core::hash::Hash), [`Ord`], [`PartialOrd`]. With the `serde` feature on, this also adds
-/// `Serialize` and `Deserialize` implementations.
+/// [`Serialize`](serde::Serialize) and [`Deserialize](serde::Deserialize) implementations.
 ///
 /// You can also define multiple newtypes within one macro call:
 ///
@@ -188,7 +202,7 @@ macro_rules! hash_newtype {
             $({ $($type_attrs)* })*
         }
 
-        $crate::hex_fmt_impl!(<$newtype as $crate::Hash>::DISPLAY_BACKWARD, <$newtype as $crate::Hash>::LEN, $newtype);
+        $crate::hex_fmt_impl!(<$newtype as $crate::Hash>::DISPLAY_BACKWARD, $newtype);
         $crate::serde_impl!($newtype, <$newtype as $crate::Hash>::LEN);
         $crate::borrow_slice_impl!($newtype);
 
@@ -241,7 +255,7 @@ macro_rules! hash_newtype {
             }
 
             #[inline]
-            fn from_slice(sl: &[u8]) -> $crate::_export::_core::result::Result<$newtype, $crate::FromSliceError> {
+            fn from_slice(sl: &[u8]) -> Result<$newtype, $crate::Error> {
                 Ok($newtype(<$hash as $crate::Hash>::from_slice(sl)?))
             }
 
@@ -268,15 +282,17 @@ macro_rules! hash_newtype {
         }
 
         impl $crate::_export::_core::str::FromStr for $newtype {
-            type Err = $crate::hex::HexToArrayError;
+            type Err = $crate::hex::Error;
             fn from_str(s: &str) -> $crate::_export::_core::result::Result<$newtype, Self::Err> {
-                use $crate::{Hash, hex::FromHex};
+                use $crate::hex::{HexIterator, FromHex};
+                use $crate::Hash;
 
-                let mut bytes = <[u8; <Self as $crate::Hash>::LEN]>::from_hex(s)?;
-                if <Self as $crate::Hash>::DISPLAY_BACKWARD {
-                    bytes.reverse();
+                let inner: <$hash as Hash>::Bytes = if <Self as $crate::Hash>::DISPLAY_BACKWARD {
+                    FromHex::from_byte_iter(HexIterator::new(s)?.rev())?
+                } else {
+                    FromHex::from_byte_iter(HexIterator::new(s)?)?
                 };
-                Ok($newtype(<$hash>::from_byte_array(bytes)))
+                Ok($newtype(<$hash>::from_byte_array(inner)))
             }
         }
 
@@ -384,9 +400,33 @@ macro_rules! hash_newtype_known_attrs {
     ($($ignore:tt)*) => {};
 }
 
+#[cfg(feature = "schemars")]
+#[cfg_attr(docsrs, doc(cfg(feature = "schemars")))]
+pub mod json_hex_string {
+    use schemars::schema::{Schema, SchemaObject};
+    use schemars::{gen::SchemaGenerator, JsonSchema};
+    macro_rules! define_custom_hex {
+        ($name:ident, $len:expr) => {
+            pub fn $name(gen: &mut SchemaGenerator) -> Schema {
+                let mut schema: SchemaObject = <String>::json_schema(gen).into();
+                schema.string = Some(Box::new(schemars::schema::StringValidation {
+                    max_length: Some($len * 2),
+                    min_length: Some($len * 2),
+                    pattern: Some("[0-9a-fA-F]+".to_owned()),
+                }));
+                schema.into()
+            }
+        };
+    }
+    define_custom_hex!(len_8, 8);
+    define_custom_hex!(len_20, 20);
+    define_custom_hex!(len_32, 32);
+    define_custom_hex!(len_64, 64);
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{sha256, Hash};
+    use crate::{Hash, sha256};
 
     #[test]
     fn hash_as_ref_array() {

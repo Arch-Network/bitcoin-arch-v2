@@ -6,10 +6,15 @@
 //! according to the BIP-174 specification.
 //!
 
-use hashes::{hash160, ripemd160, sha256, sha256d, Hash};
-// use secp256k1::XOnlyPublicKey;
+use core::convert::TryFrom;
+use core::convert::TryInto;
 
-use super::map::{Input, Map, Output, PsbtSighashType};
+use crate::key::XOnlyPublicKey;
+use crate::prelude::*;
+use crate::VarInt;
+
+use crate::io;
+
 use crate::bip32::{ChildNumber, Fingerprint, KeySource};
 use crate::blockdata::script::ScriptBuf;
 use crate::blockdata::transaction::{Transaction, TxOut};
@@ -17,12 +22,15 @@ use crate::blockdata::witness::Witness;
 use crate::consensus::encode::{self, deserialize_partial, serialize, Decodable, Encodable};
 use crate::crypto::key::PublicKey;
 use crate::crypto::{ecdsa, taproot};
-use crate::psbt::{Error, Psbt};
-use crate::taproot::{
-    ControlBlock, LeafVersion, TapLeafHash, TapNodeHash, TapTree, TaprootBuilder,
-};
-use crate::VarInt;
-use crate::{prelude::*, XOnlyPublicKey};
+use crate::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
+use crate::psbt::{Error, PartiallySignedTransaction};
+use crate::taproot::TapTree;
+use crate::taproot::{ControlBlock, LeafVersion, TapLeafHash, TapNodeHash};
+
+use super::map::{Input, Map, Output, PsbtSighashType};
+use super::Psbt;
+
+use crate::taproot::TaprootBuilder;
 /// A trait for serializing a value as raw data for insertion into PSBT
 /// key-value maps.
 pub(crate) trait Serialize {
@@ -36,7 +44,7 @@ pub(crate) trait Deserialize: Sized {
     fn deserialize(bytes: &[u8]) -> Result<Self, Error>;
 }
 
-impl Psbt {
+impl PartiallySignedTransaction {
     /// Serialize a value as bytes in hex.
     pub fn serialize_hex(&self) -> String {
         self.serialize().to_lower_hex_string()
@@ -185,9 +193,11 @@ impl Deserialize for ecdsa::Signature {
         // would use check the signature assuming sighash_u32 as `0x01`.
         ecdsa::Signature::from_slice(bytes).map_err(|e| match e {
             ecdsa::Error::EmptySignature => Error::InvalidEcdsaSignature(e),
-            ecdsa::Error::SighashType(err) => Error::NonStandardSighashType(err.0),
+            ecdsa::Error::NonStandardSighashType(flag) => Error::NonStandardSighashType(flag),
             ecdsa::Error::Secp256k1(..) => Error::InvalidEcdsaSignature(e),
-            ecdsa::Error::Hex(..) => unreachable!("Decoding from slice, not hex"),
+            ecdsa::Error::HexEncoding(..) => {
+                unreachable!("Decoding from slice, not hex")
+            }
         })
     }
 }
@@ -219,7 +229,7 @@ impl Deserialize for KeySource {
         while !d.is_empty() {
             match u32::consensus_decode(&mut d) {
                 Ok(index) => dpath.push(index.into()),
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e)?,
             }
         }
 
@@ -274,12 +284,10 @@ impl Serialize for taproot::Signature {
 
 impl Deserialize for taproot::Signature {
     fn deserialize(bytes: &[u8]) -> Result<Self, Error> {
-        use taproot::SigFromSliceError::*;
-
         taproot::Signature::from_slice(bytes).map_err(|e| match e {
-            SighashType(err) => Error::NonStandardSighashType(err.0),
-            InvalidSignatureSize(_) => Error::InvalidTaprootSignature(e),
-            Secp256k1(..) => Error::InvalidTaprootSignature(e),
+            taproot::Error::InvalidSighashType(flag) => Error::NonStandardSighashType(flag as u32),
+            taproot::Error::InvalidSignatureSize(_) => Error::InvalidTaprootSignature(e),
+            taproot::Error::Secp256k1(..) => Error::InvalidTaprootSignature(e),
         })
     }
 }
@@ -346,6 +354,7 @@ impl Serialize for (Vec<TapLeafHash>, KeySource) {
         self.0
             .consensus_encode(&mut buf)
             .expect("Vecs don't error allocation");
+        // TODO: Add support for writing into a writer for key-source
         buf.extend(self.1.serialize());
         buf
     }
@@ -364,7 +373,7 @@ impl Serialize for TapTree {
         let capacity = self
             .script_leaves()
             .map(|l| {
-                l.script().len() + VarInt::from(l.script().len()).size() // script version
+                l.script().len() + VarInt(l.script().len() as u64).len() // script version
             + 1 // merkle branch
             + 1 // leaf version
             })
@@ -415,6 +424,8 @@ fn key_source_len(key_source: &KeySource) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use core::convert::TryFrom;
+
     use super::*;
 
     // Composes tree matching a given depth map, filled with dumb script leafs,
@@ -477,6 +488,6 @@ mod tests {
     #[should_panic(expected = "InvalidMagic")]
     fn invalid_vector_1() {
         let hex_psbt = b"0200000001268171371edff285e937adeea4b37b78000c0566cbb3ad64641713ca42171bf6000000006a473044022070b2245123e6bf474d60c5b50c043d4c691a5d2435f09a34a7662a9dc251790a022001329ca9dacf280bdf30740ec0390422422c81cb45839457aeb76fc12edd95b3012102657d118d3357b8e0f4c2cd46db7b39f6d9c38d9a70abcb9b2de5dc8dbfe4ce31feffffff02d3dff505000000001976a914d0c59903c5bac2868760e90fd521a4665aa7652088ac00e1f5050000000017a9143545e6e33b832c47050f24d3eeb93c9c03948bc787b32e1300";
-        Psbt::deserialize(hex_psbt).unwrap();
+        PartiallySignedTransaction::deserialize(hex_psbt).unwrap();
     }
 }

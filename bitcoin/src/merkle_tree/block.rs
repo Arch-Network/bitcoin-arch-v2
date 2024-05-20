@@ -1,3 +1,4 @@
+// Written by John L. Jegutanis
 // SPDX-License-Identifier: CC0-1.0
 //
 // This code was translated from merkleblock.h, merkleblock.cpp and pmt_tests.cpp
@@ -13,7 +14,7 @@
 //!
 //! ```rust
 //! use bitcoin::hash_types::Txid;
-//! use bitcoin::hex::FromHex;
+//! use bitcoin::hashes::hex::FromHex;
 //! use bitcoin::{Block, MerkleBlock};
 //!
 //! // Get the proof from a bitcoind by running in the terminal:
@@ -40,14 +41,14 @@
 
 use core::fmt;
 
-use hashes::Hash;
-use io::{BufRead, Write};
-
 use self::MerkleBlockError::*;
-use crate::blockdata::block::{self, Block, TxMerkleNode};
-use crate::blockdata::transaction::{Transaction, Txid};
-use crate::blockdata::weight::Weight;
-use crate::consensus::encode::{self, Decodable, Encodable, MAX_VEC_SIZE};
+use crate::blockdata::block::{self, Block};
+use crate::blockdata::constants::{MAX_BLOCK_WEIGHT, MIN_TRANSACTION_WEIGHT};
+use crate::blockdata::transaction::Transaction;
+use crate::consensus::encode::{self, Decodable, Encodable};
+use crate::hash_types::{TxMerkleNode, Txid};
+use crate::hashes::Hash;
+use crate::io;
 use crate::prelude::*;
 
 /// Data structure that represents a block header paired to a partial merkle tree.
@@ -72,7 +73,7 @@ impl MerkleBlock {
     ///
     /// ```rust
     /// use bitcoin::hash_types::Txid;
-    /// use bitcoin::hex::FromHex;
+    /// use bitcoin::hashes::hex::FromHex;
     /// use bitcoin::{Block, MerkleBlock};
     ///
     /// // Block 80000
@@ -103,7 +104,7 @@ impl MerkleBlock {
     where
         F: Fn(&Txid) -> bool,
     {
-        let block_txids: Vec<_> = block.txdata.iter().map(Transaction::compute_txid).collect();
+        let block_txids: Vec<_> = block.txdata.iter().map(Transaction::txid).collect();
         Self::from_header_txids_with_predicate(&block.header, &block_txids, match_txids)
     }
 
@@ -144,14 +145,14 @@ impl MerkleBlock {
 }
 
 impl Encodable for MerkleBlock {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
+    fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
         let len = self.header.consensus_encode(w)? + self.txn.consensus_encode(w)?;
         Ok(len)
     }
 }
 
 impl Decodable for MerkleBlock {
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
         Ok(MerkleBlock {
             header: Decodable::consensus_decode(r)?,
             txn: Decodable::consensus_decode(r)?,
@@ -222,7 +223,7 @@ impl PartialMerkleTree {
     ///
     /// ```rust
     /// use bitcoin::hash_types::Txid;
-    /// use bitcoin::hex::FromHex;
+    /// use bitcoin::hashes::hex::FromHex;
     /// use bitcoin::merkle_tree::{MerkleBlock, PartialMerkleTree};
     ///
     /// // Block 80000
@@ -249,8 +250,11 @@ impl PartialMerkleTree {
             bits: Vec::with_capacity(txids.len()),
             hashes: vec![],
         };
-        let height = pmt.calc_tree_height();
-
+        // calculate height of tree
+        let mut height = 0;
+        while pmt.calc_tree_width(height) > 1 {
+            height += 1;
+        }
         // traverse the partial tree
         pmt.traverse_and_build(height, 0, txids, matches);
         pmt
@@ -271,7 +275,7 @@ impl PartialMerkleTree {
             return Err(NoTransactions);
         };
         // check for excessively high numbers of transactions
-        if self.num_transactions as u64 > Weight::MAX_BLOCK / Weight::MIN_TRANSACTION {
+        if self.num_transactions > MAX_BLOCK_WEIGHT / MIN_TRANSACTION_WEIGHT {
             return Err(TooManyTransactions);
         }
         // there can never be more hashes provided than one for every txid
@@ -282,9 +286,11 @@ impl PartialMerkleTree {
         if self.bits.len() < self.hashes.len() {
             return Err(NotEnoughBits);
         };
-
-        let height = self.calc_tree_height();
-
+        // calculate height of tree
+        let mut height = 0;
+        while self.calc_tree_width(height) > 1 {
+            height += 1;
+        }
         // traverse the partial tree
         let mut bits_used = 0u32;
         let mut hash_used = 0u32;
@@ -300,15 +306,6 @@ impl PartialMerkleTree {
             return Err(NotAllHashesConsumed);
         }
         Ok(TxMerkleNode::from_byte_array(hash_merkle_root.to_byte_array()))
-    }
-
-    /// Calculates the height of the tree.
-    fn calc_tree_height(&self) -> u32 {
-        let mut height = 0;
-        while self.calc_tree_width(height) > 1 {
-            height += 1;
-        }
-        height
     }
 
     /// Helper function to efficiently calculate the number of nodes at given height
@@ -434,51 +431,33 @@ impl PartialMerkleTree {
 }
 
 impl Encodable for PartialMerkleTree {
-    fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
-        let mut ret = self.num_transactions.consensus_encode(w)?;
-        ret += self.hashes.consensus_encode(w)?;
-
-        let nb_bytes_for_bits = (self.bits.len() + 7) / 8;
-        ret += encode::VarInt::from(nb_bytes_for_bits).consensus_encode(w)?;
-        for chunk in self.bits.chunks(8) {
-            let mut byte = 0u8;
-            for (i, bit) in chunk.iter().enumerate() {
-                byte |= (*bit as u8) << i;
-            }
-            ret += byte.consensus_encode(w)?;
+    fn consensus_encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
+        let ret = self.num_transactions.consensus_encode(w)? + self.hashes.consensus_encode(w)?;
+        let mut bytes: Vec<u8> = vec![0; (self.bits.len() + 7) / 8];
+        for p in 0..self.bits.len() {
+            bytes[p / 8] |= (self.bits[p] as u8) << (p % 8) as u8;
         }
-        Ok(ret)
+        Ok(ret + bytes.consensus_encode(w)?)
     }
 }
 
 impl Decodable for PartialMerkleTree {
-    fn consensus_decode_from_finite_reader<R: BufRead + ?Sized>(
-        r: &mut R,
-    ) -> Result<Self, encode::Error> {
+    fn consensus_decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
         let num_transactions: u32 = Decodable::consensus_decode(r)?;
         let hashes: Vec<TxMerkleNode> = Decodable::consensus_decode(r)?;
 
-        let nb_bytes_for_bits = encode::VarInt::consensus_decode(r)?.0 as usize;
-        if nb_bytes_for_bits > MAX_VEC_SIZE {
-            return Err(encode::Error::OversizedVectorAllocation {
-                requested: nb_bytes_for_bits,
-                max: MAX_VEC_SIZE,
-            });
-        }
-        let mut bits = vec![false; nb_bytes_for_bits * 8];
-        for chunk in bits.chunks_mut(8) {
-            let byte = u8::consensus_decode(r)?;
-            for (i, bit) in chunk.iter_mut().enumerate() {
-                *bit = (byte & (1 << i)) != 0;
-            }
-        }
+        let bytes: Vec<u8> = Decodable::consensus_decode(r)?;
+        let mut bits: Vec<bool> = vec![false; bytes.len() * 8];
 
+        for (p, bit) in bits.iter_mut().enumerate() {
+            *bit = (bytes[p / 8] & (1 << (p % 8) as u8)) != 0;
+        }
         Ok(PartialMerkleTree { num_transactions, hashes, bits })
     }
 }
 
 /// An error when verifying the merkle block.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[non_exhaustive]
 pub enum MerkleBlockError {
     /// Merkle root in the header doesn't match to the root calculated from partial merkle tree.
@@ -504,11 +483,9 @@ pub enum MerkleBlockError {
     IdenticalHashesFound,
 }
 
-internals::impl_from_infallible!(MerkleBlockError);
-
 impl fmt::Display for MerkleBlockError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use MerkleBlockError::*;
+        use self::MerkleBlockError::*;
 
         match *self {
             MerkleRootMismatch => write!(f, "merkle header root doesn't match to the root calculated from the partial merkle tree"),
@@ -526,9 +503,10 @@ impl fmt::Display for MerkleBlockError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 impl std::error::Error for MerkleBlockError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use MerkleBlockError::*;
+        use self::MerkleBlockError::*;
 
         match *self {
             MerkleRootMismatch | NoTransactions | TooManyTransactions | TooManyHashes
@@ -540,11 +518,17 @@ impl std::error::Error for MerkleBlockError {
 
 #[cfg(test)]
 mod tests {
-    use hex::{test_hex_unwrap as hex};
     #[cfg(feature = "rand-std")]
     use secp256k1::rand::prelude::*;
+
     use super::*;
     use crate::consensus::encode::{deserialize, serialize};
+    #[cfg(feature = "rand-std")]
+    use crate::hash_types::TxMerkleNode;
+    #[cfg(feature = "rand-std")]
+    use crate::hashes::Hash;
+    use crate::internal_macros::hex;
+    use crate::{Block, Txid};
 
     #[cfg(feature = "rand-std")]
     macro_rules! pmt_tests {
@@ -705,7 +689,7 @@ mod tests {
 
         let txid1 = txids[0];
         let txid2 = txids[1];
-        let txids = [txid1, txid2];
+        let txids = vec![txid1, txid2];
 
         let merkle_block = MerkleBlock::from_block_with_predicate(&block, |t| txids.contains(t));
 
@@ -768,72 +752,8 @@ mod tests {
     /// Returns a real block (0000000000013b8ab2cd513b0261a14096412195a72a0c4827d229dcc7e0f7af)
     /// with 9 txs.
     fn get_block_13b8a() -> Block {
-        use hex::FromHex;
+        use crate::hashes::hex::FromHex;
         let block_hex = include_str!("../../tests/data/block_13b8a.hex");
         deserialize(&Vec::from_hex(block_hex).unwrap()).unwrap()
-    }
-
-    macro_rules! check_calc_tree_width {
-        ($($test_name:ident, $num_transactions:literal, $height:literal, $expected_width:literal);* $(;)?) => {
-            $(
-                #[test]
-                fn $test_name() {
-                    let pmt = PartialMerkleTree {
-                        num_transactions: $num_transactions,
-                        bits: vec![],
-                        hashes: vec![],
-                    };
-                    let got = pmt.calc_tree_width($height);
-                    assert_eq!(got, $expected_width)
-                }
-            )*
-        }
-    }
-
-    // tree_width_<id> <num txs> <height> <expected_width>
-    //
-    // height 0 is the bottom of the tree, where the leaves are.
-    check_calc_tree_width! {
-        tree_width_01, 1, 0, 1;
-        //
-        tree_width_02, 2, 0, 2;
-        tree_width_03, 2, 1, 1;
-        //
-        tree_width_04, 3, 0, 3;
-        tree_width_05, 3, 1, 2;
-        tree_width_06, 3, 2, 1;
-        //
-        tree_width_07, 4, 0, 4;
-        tree_width_08, 4, 1, 2;
-        tree_width_09, 4, 2, 1;
-        //
-        tree_width_10, 5, 0, 5;
-        tree_width_11, 5, 1, 3;
-        tree_width_12, 5, 2, 2;
-        tree_width_13, 5, 3, 1;
-        //
-        tree_width_14, 6, 0, 6;
-        tree_width_15, 6, 1, 3;
-        tree_width_16, 6, 2, 2;
-        tree_width_17, 6, 3, 1;
-        //
-        tree_width_18, 7, 0, 7;
-        tree_width_19, 7, 1, 4;
-        tree_width_20, 7, 2, 2;
-        tree_width_21, 7, 3, 1;
-    }
-
-    #[test]
-    fn regression_2606() {
-        // Attempt
-        let bytes = hex!(
-            "000006000000000000000004ee00000004c7f1ccb1000000ffff000000010000\
-             0000ffffffffff1f000000000400000000000002000000000500000000000000\
-             000000000300000000000003000000000200000000ff00000000c7f1ccb10407\
-             00000000000000ccb100c76538b100000004bfa9c251681b1b00040000000025\
-             00000004bfaac251681b1b25\
-         ");
-        let deser = crate::consensus::deserialize::<MerkleBlock>(&bytes);
-        assert!(deser.is_err());
     }
 }

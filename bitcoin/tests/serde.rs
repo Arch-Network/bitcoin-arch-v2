@@ -23,22 +23,23 @@
 #![cfg(feature = "serde")]
 
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use std::str::FromStr;
 
 use bincode::serialize;
-use bitcoin::bip32::{ChildNumber, KeySource, Xpriv, Xpub};
+use bitcoin::bip32::{ChildNumber, ExtendedPrivKey, ExtendedPubKey, KeySource};
 use bitcoin::blockdata::locktime::{absolute, relative};
 use bitcoin::blockdata::witness::Witness;
 use bitcoin::consensus::encode::deserialize;
+use bitcoin::hashes::hex::FromHex;
 use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
-use bitcoin::hex::FromHex;
 use bitcoin::psbt::raw::{self, Key, Pair, ProprietaryKey};
 use bitcoin::psbt::{Input, Output, Psbt, PsbtSighashType};
 use bitcoin::sighash::{EcdsaSighashType, TapSighashType};
 use bitcoin::taproot::{self, ControlBlock, LeafVersion, TapTree, TaprootBuilder};
 use bitcoin::{
-    ecdsa, transaction, Address, Amount, Block, NetworkKind, OutPoint, PrivateKey, PublicKey,
-    ScriptBuf, Sequence, Target, Transaction, TxIn, TxOut, Txid, Work,
+    ecdsa, Address, Block, Network, OutPoint, PrivateKey, PublicKey, ScriptBuf, Sequence, Target,
+    Transaction, TxIn, TxOut, Txid, Work,
 };
 
 /// Implicitly does regression test for `BlockHeader` also.
@@ -49,7 +50,9 @@ fn serde_regression_block() {
     );
     let block: Block = deserialize(segwit).unwrap();
     let got = serialize(&block).unwrap();
-    let want = include_bytes!("data/serde/block_bincode");
+    // The cast is required because Rust 1.41.1 throws the following error without it:
+    // the trait `std::array::LengthAtMost32` is not implemented for `[u8; 5123]`
+    let want = include_bytes!("data/serde/block_bincode") as &[_];
     assert_eq!(got, want)
 }
 
@@ -109,10 +112,8 @@ fn serde_regression_txin() {
 
 #[test]
 fn serde_regression_txout() {
-    let txout = TxOut {
-        value: Amount::from_sat(0xDEADBEEFCAFEBABE),
-        script_pubkey: ScriptBuf::from(vec![0u8, 1u8, 2u8]),
-    };
+    let txout =
+        TxOut { value: 0xDEADBEEFCAFEBABE, script_pubkey: ScriptBuf::from(vec![0u8, 1u8, 2u8]) };
     let got = serialize(&txout).unwrap();
     let want = include_bytes!("data/serde/txout_bincode") as &[_];
     assert_eq!(got, want)
@@ -144,7 +145,7 @@ fn serde_regression_witness() {
 fn serde_regression_address() {
     let s = include_str!("data/serde/public_key_hex");
     let pk = PublicKey::from_str(s.trim()).unwrap();
-    let addr = Address::p2pkh(pk, NetworkKind::Main);
+    let addr = Address::p2pkh(&pk, Network::Bitcoin);
 
     let got = serialize(&addr).unwrap();
     let want = include_bytes!("data/serde/address_bincode") as &[_];
@@ -154,7 +155,7 @@ fn serde_regression_address() {
 #[test]
 fn serde_regression_extended_priv_key() {
     let s = include_str!("data/serde/extended_priv_key");
-    let key = Xpriv::from_str(s.trim()).unwrap();
+    let key = ExtendedPrivKey::from_str(s.trim()).unwrap();
     let got = serialize(&key).unwrap();
     let want = include_bytes!("data/serde/extended_priv_key_bincode") as &[_];
     assert_eq!(got, want)
@@ -163,7 +164,7 @@ fn serde_regression_extended_priv_key() {
 #[test]
 fn serde_regression_extended_pub_key() {
     let s = include_str!("data/serde/extended_pub_key");
-    let key = Xpub::from_str(s.trim()).unwrap();
+    let key = ExtendedPubKey::from_str(s.trim()).unwrap();
     let got = serialize(&key).unwrap();
     let want = include_bytes!("data/serde/extended_pub_key_bincode") as &[_];
     assert_eq!(got, want)
@@ -173,8 +174,8 @@ fn serde_regression_extended_pub_key() {
 fn serde_regression_ecdsa_sig() {
     let s = include_str!("data/serde/ecdsa_sig_hex");
     let sig = ecdsa::Signature {
-        signature: secp256k1::ecdsa::Signature::from_str(s.trim()).unwrap(),
-        sighash_type: EcdsaSighashType::All,
+        sig: secp256k1::ecdsa::Signature::from_str(s.trim()).unwrap(),
+        hash_ty: EcdsaSighashType::All,
     };
 
     let got = serialize(&sig).unwrap();
@@ -220,7 +221,7 @@ fn serde_regression_public_key() {
 #[test]
 fn serde_regression_psbt() {
     let tx = Transaction {
-        version: transaction::Version::ONE,
+        version: 1,
         lock_time: absolute::LockTime::ZERO,
         input: vec![TxIn {
             previous_output: OutPoint {
@@ -238,14 +239,14 @@ fn serde_regression_psbt() {
             .unwrap()]),
         }],
         output: vec![TxOut {
-            value: Amount::from_sat(190_303_501_938),
+            value: 190303501938,
             script_pubkey: ScriptBuf::from_hex("a914339725ba21efd62ac753a9bcd067d6c7a6a39d0587")
                 .unwrap(),
         }],
     };
     let unknown: BTreeMap<raw::Key, Vec<u8>> =
-        vec![(raw::Key { type_value: 9, key: vec![0, 1] }, vec![3, 4, 5])].into_iter().collect();
-    let key_source = ("deadbeef".parse().unwrap(), "0'/1".parse().unwrap());
+        vec![(raw::Key { type_value: 1, key: vec![0, 1] }, vec![3, 4, 5])].into_iter().collect();
+    let key_source = ("deadbeef".parse().unwrap(), "m/0'/1".parse().unwrap());
     let keypaths: BTreeMap<secp256k1::PublicKey, KeySource> = vec![(
         "0339880dc92394b7355e3d0439fa283c31de7590812ea011c4245c0674a685e883".parse().unwrap(),
         key_source.clone(),
@@ -268,7 +269,7 @@ fn serde_regression_psbt() {
         version: 0,
         xpub: {
             let s = include_str!("data/serde/extended_pub_key");
-            let xpub = Xpub::from_str(s.trim()).unwrap();
+            let xpub = ExtendedPubKey::from_str(s.trim()).unwrap();
             vec![(xpub, key_source)].into_iter().collect()
         },
         unsigned_tx: {
@@ -283,7 +284,7 @@ fn serde_regression_psbt() {
         inputs: vec![Input {
             non_witness_utxo: Some(tx),
             witness_utxo: Some(TxOut {
-                value: Amount::from_sat(190_303_501_938),
+                value: 190303501938,
                 script_pubkey: ScriptBuf::from_hex("a914339725ba21efd62ac753a9bcd067d6c7a6a39d0587").unwrap(),
             }),
             sighash_type: Some(PsbtSighashType::from(EcdsaSighashType::from_str("SIGHASH_SINGLE|SIGHASH_ANYONECANPAY").unwrap())),
@@ -295,10 +296,10 @@ fn serde_regression_psbt() {
             )].into_iter().collect(),
             bip32_derivation: keypaths.clone().into_iter().collect(),
             final_script_witness: Some(Witness::from_slice(&[vec![1, 3], vec![5]])),
-            ripemd160_preimages: vec![(ripemd160::Hash::hash(&[1, 2]), vec![1, 2])].into_iter().collect(),
-            sha256_preimages: vec![(sha256::Hash::hash(&[1, 2]), vec![1, 2])].into_iter().collect(),
-            hash160_preimages: vec![(hash160::Hash::hash(&[1, 2]), vec![1, 2])].into_iter().collect(),
-            hash256_preimages: vec![(sha256d::Hash::hash(&[1, 2]), vec![1, 2])].into_iter().collect(),
+            ripemd160_preimages: vec![(ripemd160::Hash::hash(&[]), vec![1, 2])].into_iter().collect(),
+            sha256_preimages: vec![(sha256::Hash::hash(&[]), vec![1, 2])].into_iter().collect(),
+            hash160_preimages: vec![(hash160::Hash::hash(&[]), vec![1, 2])].into_iter().collect(),
+            hash256_preimages: vec![(sha256d::Hash::hash(&[]), vec![1, 2])].into_iter().collect(),
             proprietary: proprietary.clone(),
             unknown: unknown.clone(),
             ..Default::default()
@@ -310,10 +311,6 @@ fn serde_regression_psbt() {
             ..Default::default()
         }],
     };
-
-    // Sanity, check we can roundtrip BIP-174 serialize.
-    let serialized = psbt.serialize();
-    Psbt::deserialize(&serialized).unwrap();
 
     let got = serialize(&psbt).unwrap();
     let want = include_bytes!("data/serde/psbt_bincode") as &[_];
@@ -347,8 +344,8 @@ fn serde_regression_proprietary_key() {
 fn serde_regression_taproot_sig() {
     let s = include_str!("data/serde/taproot_sig_hex");
     let sig = taproot::Signature {
-        signature: secp256k1::schnorr::Signature::from_str(s.trim()).unwrap(),
-        sighash_type: TapSighashType::All,
+        sig: secp256k1::schnorr::Signature::from_str(s.trim()).unwrap(),
+        hash_ty: TapSighashType::All,
     };
 
     let got = serialize(&sig).unwrap();

@@ -1,25 +1,25 @@
+// Rust Bitcoin Library - Written by the rust-bitcoin developers.
 // SPDX-License-Identifier: CC0-1.0
 
 //! Proof-of-work related integer types.
 //!
-//! Provides the [`Work`] and [`Target`] types that are used in proof-of-work calculations. The
+//! Provides the [`Work`] and [`Target`] types that are use in proof-of-work calculations. The
 //! functions here are designed to be fast, by that we mean it is safe to use them to check headers.
 //!
 
 use core::fmt::{self, LowerHex, UpperHex};
 use core::ops::{Add, Div, Mul, Not, Rem, Shl, Shr, Sub};
 
-use io::{BufRead, Write};
 #[cfg(all(test, mutate))]
 use mutagen::mutate;
-use units::parse;
 
-use crate::blockdata::block::BlockHash;
 use crate::consensus::encode::{self, Decodable, Encodable};
 #[cfg(doc)]
 use crate::consensus::Params;
-use crate::error::{PrefixedHexError, UnprefixedHexError, ContainsPrefixError, MissingPrefixError};
-use crate::Network;
+use crate::hash_types::BlockHash;
+use crate::io::{self, Read, Write};
+use crate::prelude::String;
+use crate::string::FromHexStr;
 
 /// Implement traits and methods shared by `Target` and `Work`.
 macro_rules! do_impl {
@@ -44,17 +44,17 @@ macro_rules! do_impl {
 
         impl fmt::Display for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result { fmt::Display::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
         }
 
         impl fmt::LowerHex for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
         }
 
         impl fmt::UpperHex for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result { fmt::UpperHex::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::UpperHex::fmt(&self.0, f) }
         }
     };
 }
@@ -62,12 +62,26 @@ macro_rules! do_impl {
 /// A 256 bit integer representing work.
 ///
 /// Work is a measure of how difficult it is to find a hash below a given [`Target`].
+///
+/// ref: <https://en.bitcoin.it/wiki/Work>
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Work(U256);
 
 impl Work {
+    /// Lowest possible work value for Mainnet. See comment on [`Params::pow_limit`] for more info.
+    pub const MAINNET_MIN: Work = Work(U256(0x0000_0000_ffff_0000_0000_0000_0000_0000_u128, 0));
+
+    /// Lowest possible work value for Testnet. See comment on [`Params::pow_limit`] for more info.
+    pub const TESTNET_MIN: Work = Work(U256(0x0000_0000_ffff_0000_0000_0000_0000_0000_u128, 0));
+
+    /// Lowest possible work value for Signet. See comment on [`Params::pow_limit`] for more info.
+    pub const SIGNET_MIN: Work = Work(U256(0x0000_0377_ae00_0000_0000_0000_0000_0000_u128, 0));
+
+    /// Lowest possible work value for Regtest. See comment on [`Params::pow_limit`] for more info.
+    pub const REGTEST_MIN: Work = Work(U256(0x7fff_ff00_0000_0000_0000_0000_0000_0000_u128, 0));
+
     /// Converts this [`Work`] to [`Target`].
     pub fn to_target(self) -> Target { Target(self.0.inverse()) }
 
@@ -77,6 +91,7 @@ impl Work {
     /// used mainly for informative and displaying purposes, similarly to Bitcoin Core's
     /// `log2_work` output in its logs.
     #[cfg(feature = "std")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
     pub fn log2(self) -> f64 { self.0.to_f64().log2() }
 }
 do_impl!(Work);
@@ -117,26 +132,10 @@ impl Target {
     // the low 208 bits are all zero.
     pub const MAX: Self = Target(U256(0xFFFF_u128 << (208 - 128), 0));
 
-    /// The maximum **attainable** target value on mainnet.
+    /// The maximum possible target (see [`Target::MAX`]).
     ///
-    /// Not all target values are attainable because consensus code uses the compact format to
-    /// represent targets (see `CompactTarget`).
-    pub const MAX_ATTAINABLE_MAINNET: Self = Target(U256(0xFFFF_u128 << (208 - 128), 0));
-
-    /// The proof of work limit on testnet.
-    // Taken from Bitcoin Core but had lossy conversion to/from compact form.
-    // https://github.com/bitcoin/bitcoin/blob/8105bce5b384c72cf08b25b7c5343622754e7337/src/kernel/chainparams.cpp#L208
-    pub const MAX_ATTAINABLE_TESTNET: Self = Target(U256(0xFFFF_u128 << (208 - 128), 0));
-
-    /// The proof of work limit on regtest.
-    // Taken from Bitcoin Core but had lossy conversion to/from compact form.
-    // https://github.com/bitcoin/bitcoin/blob/8105bce5b384c72cf08b25b7c5343622754e7337/src/kernel/chainparams.cpp#L411
-    pub const MAX_ATTAINABLE_REGTEST: Self = Target(U256(0x7FFF_FF00u128 << 96, 0));
-
-    /// The proof of work limit on signet.
-    // Taken from Bitcoin Core but had lossy conversion to/from compact form.
-    // https://github.com/bitcoin/bitcoin/blob/8105bce5b384c72cf08b25b7c5343622754e7337/src/kernel/chainparams.cpp#L348
-    pub const MAX_ATTAINABLE_SIGNET: Self = Target(U256(0x0377_ae00 << 80, 0));
+    /// This is provided for consistency with Rust 1.41.1, newer code should use [`Target::MAX`].
+    pub const fn max_value() -> Self { Target::MAX }
 
     /// Computes the [`Target`] value from a compact representation.
     ///
@@ -191,7 +190,7 @@ impl Target {
     /// to the target.
     #[cfg_attr(all(test, mutate), mutate)]
     pub fn is_met_by(&self, hash: BlockHash) -> bool {
-        use hashes::Hash;
+        use crate::hashes::Hash;
         let hash = U256::from_le_bytes(hash.to_byte_array());
         hash <= self.0
     }
@@ -224,14 +223,8 @@ impl Target {
     /// [max]: Target::max
     /// [target]: crate::blockdata::block::Header::target
     #[cfg_attr(all(test, mutate), mutate)]
-    pub fn difficulty(&self, network: Network) -> u128 {
-        let max = match network {
-            Network::Bitcoin => Target::MAX_ATTAINABLE_MAINNET,
-            Network::Testnet => Target::MAX_ATTAINABLE_TESTNET,
-            Network::Signet => Target::MAX_ATTAINABLE_SIGNET,
-            Network::Regtest => Target::MAX_ATTAINABLE_REGTEST,
-        };
-        let d = max.0 / self.0;
+    pub fn difficulty(&self) -> u128 {
+        let d = Target::MAX.0 / self.0;
         d.saturating_to_u128()
     }
 
@@ -272,29 +265,6 @@ do_impl!(Target);
 pub struct CompactTarget(u32);
 
 impl CompactTarget {
-    /// Creates a `CompactTarget` from an prefixed hex string.
-    pub fn from_hex(s: &str) -> Result<Self, PrefixedHexError> {
-        let stripped = if let Some(stripped) = s.strip_prefix("0x") {
-            stripped
-        } else if let Some(stripped) = s.strip_prefix("0X") {
-            stripped
-        } else {
-            return Err(MissingPrefixError::new(s).into());
-        };
-
-        let target = parse::hex_u32(stripped)?;
-        Ok(Self::from_consensus(target))
-    }
-
-    /// Creates a `CompactTarget` from an unprefixed hex string.
-    pub fn from_unprefixed_hex(s: &str) -> Result<Self, UnprefixedHexError> {
-        if s.starts_with("0x") || s.starts_with("0X") {
-            return Err(ContainsPrefixError::new(s).into());
-        }
-        let lock_time = parse::hex_u32(s)?;
-        Ok(Self::from_consensus(lock_time))
-    }
-
     /// Creates a [`CompactTarget`] from a consensus encoded `u32`.
     pub fn from_consensus(bits: u32) -> Self { Self(bits) }
 
@@ -306,6 +276,15 @@ impl From<CompactTarget> for Target {
     fn from(c: CompactTarget) -> Self { Target::from_compact(c) }
 }
 
+impl FromHexStr for CompactTarget {
+    type Error = crate::parse::ParseIntError;
+
+    fn from_hex_str_no_prefix<S: AsRef<str> + Into<String>>(s: S) -> Result<Self, Self::Error> {
+        let compact_target = crate::parse::hex_u32(s)?;
+        Ok(Self::from_consensus(compact_target))
+    }
+}
+
 impl Encodable for CompactTarget {
     #[inline]
     fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
@@ -315,19 +294,9 @@ impl Encodable for CompactTarget {
 
 impl Decodable for CompactTarget {
     #[inline]
-    fn consensus_decode<R: BufRead + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
+    fn consensus_decode<R: Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
         u32::consensus_decode(r).map(CompactTarget)
     }
-}
-
-impl LowerHex for CompactTarget {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { LowerHex::fmt(&self.0, f) }
-}
-
-impl UpperHex for CompactTarget {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { UpperHex::fmt(&self.0, f) }
 }
 
 /// Big-endian 256 bit integer type.
@@ -410,7 +379,7 @@ impl U256 {
     fn is_one(&self) -> bool { self.0 == 0 && self.1 == 1 }
 
     #[cfg_attr(all(test, mutate), mutate)]
-    fn is_max(&self) -> bool { self.0 == u128::MAX && self.1 == u128::MAX }
+    fn is_max(&self) -> bool { self.0 == u128::max_value() && self.1 == u128::max_value() }
 
     /// Returns the low 32 bits.
     fn low_u32(&self) -> u32 { self.low_u128() as u32 }
@@ -424,8 +393,8 @@ impl U256 {
     /// Returns `self` as a `u128` saturating to `u128::MAX` if `self` is too big.
     // Matagen gives false positive because >= and > both return u128::MAX
     fn saturating_to_u128(&self) -> u128 {
-        if *self > U256::from(u128::MAX) {
-            u128::MAX
+        if *self > U256::from(u128::max_value()) {
+            u128::max_value()
         } else {
             self.low_u128()
         }
@@ -447,15 +416,14 @@ impl U256 {
     ///
     /// The multiplication result along with a boolean indicating whether an arithmetic overflow
     /// occurred. If an overflow occurred then the wrapped value is returned.
-    // mutagen false pos mul_u64: replace `|` with `^` (XOR is same as OR when combined with <<)
-    // mutagen false pos mul_u64: replace `|` with `^`
-    #[cfg_attr(all(test, mutate), mutate)]
+    // mutagen false positive: binop_bit, replace `|` with `^`
     fn mul_u64(self, rhs: u64) -> (U256, bool) {
         let mut carry: u128 = 0;
         let mut split_le =
             [self.1 as u64, (self.1 >> 64) as u64, self.0 as u64, (self.0 >> 64) as u64];
 
         for word in &mut split_le {
+            // TODO: Use `carrying_mul` when stabilized: https://github.com/rust-lang/rust/issues/85532
             // This will not overflow, for proof see https://github.com/rust-bitcoin/rust-bitcoin/pull/1496#issuecomment-1365938572
             let n = carry + u128::from(rhs) * u128::from(*word);
 
@@ -737,6 +705,20 @@ impl<T: Into<u128>> From<T> for U256 {
     fn from(x: T) -> Self { U256(0, x.into()) }
 }
 
+/// Error from `TryFrom<signed type>` implementations, occurs when input is negative.
+#[derive(Debug)]
+pub struct TryFromError(i128);
+
+impl fmt::Display for TryFromError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "attempt to create unsigned integer type from negative number: {}", self.0)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+impl std::error::Error for TryFromError {}
+
 impl Add for U256 {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
@@ -807,16 +789,17 @@ impl fmt::Debug for U256 {
 macro_rules! impl_hex {
     ($hex:ident, $case:expr) => {
         impl $hex for U256 {
-            fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
-                hex::fmt_hex_exact!(f, 32, &self.to_be_bytes(), $case)
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                bitcoin_internals::hex::display::fmt_hex_exact!(f, 32, &self.to_be_bytes(), $case)
             }
         }
     };
 }
-impl_hex!(LowerHex, hex::Case::Lower);
-impl_hex!(UpperHex, hex::Case::Upper);
+impl_hex!(LowerHex, bitcoin_internals::hex::Case::Lower);
+impl_hex!(UpperHex, bitcoin_internals::hex::Case::Upper);
 
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 impl crate::serde::Serialize for U256 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -829,6 +812,7 @@ impl crate::serde::Serialize for U256 {
         }
 
         if serializer.is_human_readable() {
+            // TODO: fast hex encoding.
             serializer.collect_str(&DisplayHex(*self))
         } else {
             let bytes = self.to_be_bytes();
@@ -838,10 +822,12 @@ impl crate::serde::Serialize for U256 {
 }
 
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 impl<'de> crate::serde::Deserialize<'de> for U256 {
     fn deserialize<D: crate::serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        use hex::FromHex;
+        use core::convert::TryInto;
 
+        use crate::hashes::hex::FromHex;
         use crate::serde::de;
 
         if d.is_human_readable() {
@@ -969,7 +955,7 @@ mod tests {
         assert_eq!(U256::from(60000_u64).bits(), 16);
         assert_eq!(U256::from(70000_u64).bits(), 17);
 
-        let u = U256::from(u128::MAX) << 1;
+        let u = U256::from(u128::max_value()) << 1;
         assert_eq!(u.bits(), 129);
 
         // Try to read the following lines out loud quickly
@@ -1041,7 +1027,7 @@ mod tests {
     fn u256_display() {
         assert_eq!(format!("{}", U256::from(100_u32)), "100",);
         assert_eq!(format!("{}", U256::ZERO), "0",);
-        assert_eq!(format!("{}", U256::from(u64::MAX)), format!("{}", u64::MAX),);
+        assert_eq!(format!("{}", U256::from(u64::max_value())), format!("{}", u64::max_value()),);
         assert_eq!(
             format!("{}", U256::MAX),
             "115792089237316195423570985008687907853269984665640564039457584007913129639935",
@@ -1356,7 +1342,7 @@ mod tests {
 
     #[test]
     fn u256_addition() {
-        let x = U256::from(u128::MAX);
+        let x = U256::from(u128::max_value());
         let (add, overflow) = x.overflowing_add(U256::ONE);
         assert!(!overflow);
         assert_eq!(add, U256(1, 0));
@@ -1374,7 +1360,7 @@ mod tests {
         let x = U256(1, 0);
         let (sub, overflow) = x.overflowing_sub(U256::ONE);
         assert!(!overflow);
-        assert_eq!(sub, U256::from(u128::MAX));
+        assert_eq!(sub, U256::from(u128::max_value()));
     }
 
     #[test]
@@ -1507,7 +1493,7 @@ mod tests {
 
     #[test]
     fn u256_is_max_correct_negative() {
-        let tc = vec![U256::ZERO, U256::ONE, U256::from(u128::MAX)];
+        let tc = vec![U256::ZERO, U256::ONE, U256::from(u128::max_value())];
         for t in tc {
             assert!(!t.is_max())
         }
@@ -1517,45 +1503,29 @@ mod tests {
     fn u256_is_max_correct_positive() {
         assert!(U256::MAX.is_max());
 
-        let u = u128::MAX;
+        let u = u128::max_value();
         assert!(((U256::from(u) << 128) + U256::from(u)).is_max());
     }
 
     #[test]
-    fn compact_target_from_hex_lower() {
-        let target = CompactTarget::from_hex("0x010034ab").unwrap();
-        assert_eq!(target, CompactTarget(0x010034ab));
+    fn compact_target_from_hex_str_happy_path() {
+        let actual = CompactTarget::from_hex_str("0x01003456").unwrap();
+        let expected = CompactTarget(0x01003456);
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn compact_target_from_hex_upper() {
-        let target = CompactTarget::from_hex("0X010034AB").unwrap();
-        assert_eq!(target, CompactTarget(0x010034ab));
-    }
-
-    #[test]
-    fn compact_target_from_unprefixed_hex_lower() {
-        let target = CompactTarget::from_unprefixed_hex("010034ab").unwrap();
-        assert_eq!(target, CompactTarget(0x010034ab));
-    }
-
-    #[test]
-    fn compact_target_from_unprefixed_hex_upper() {
-        let target = CompactTarget::from_unprefixed_hex("010034AB").unwrap();
-        assert_eq!(target, CompactTarget(0x010034ab));
+    fn compact_target_from_hex_str_no_prefix_happy_path() {
+        let actual = CompactTarget::from_hex_str_no_prefix("01003456").unwrap();
+        let expected = CompactTarget(0x01003456);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn compact_target_from_hex_invalid_hex_should_err() {
         let hex = "0xzbf9";
-        let result = CompactTarget::from_hex(hex);
+        let result = CompactTarget::from_hex_str(hex);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn compact_target_lower_hex_and_upper_hex() {
-        assert_eq!(format!("{:08x}", CompactTarget(0x01D0F456)), "01d0f456");
-        assert_eq!(format!("{:08X}", CompactTarget(0x01d0f456)), "01D0F456");
     }
 
     #[test]
@@ -1581,7 +1551,7 @@ mod tests {
     fn target_is_met_by_for_target_equals_hash() {
         use std::str::FromStr;
 
-        use hashes::Hash;
+        use crate::hashes::Hash;
 
         let hash =
             BlockHash::from_str("ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c")
@@ -1682,13 +1652,13 @@ mod tests {
     }
 
     #[test]
-    fn u256_wrapping_add_wraps_at_boundary() {
+    fn u256_wrapping_add_wraps_at_boundry() {
         assert_eq!(U256::MAX.wrapping_add(U256::ONE), U256::ZERO);
         assert_eq!(U256::MAX.wrapping_add(U256::from(2_u8)), U256::ONE);
     }
 
     #[test]
-    fn u256_wrapping_sub_wraps_at_boundary() {
+    fn u256_wrapping_sub_wraps_at_boundry() {
         assert_eq!(U256::ZERO.wrapping_sub(U256::ONE), U256::MAX);
         assert_eq!(U256::ONE.wrapping_sub(U256::from(2_u8)), U256::MAX);
     }
@@ -1700,27 +1670,22 @@ mod tests {
     }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn u256_overflowing_addition_panics() { let _ = U256::MAX + U256::ONE; }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn u256_overflowing_subtraction_panics() { let _ = U256::ZERO - U256::ONE; }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn u256_multiplication_by_max_panics() { let _ = U256::MAX * U256::MAX; }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn work_overflowing_addition_panics() { let _ = Work(U256::MAX) + Work(U256::ONE); }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn work_overflowing_subtraction_panics() { let _ = Work(U256::ZERO) - Work(U256::ONE); }
 
@@ -1746,6 +1711,7 @@ mod tests {
 mod verification {
     use super::*;
 
+    // TODO: After we verify div_rem assert x * y / y == x
     #[kani::unwind(5)] // mul_u64 loops over 4 64 bit ints so use one more than 4
     #[kani::proof]
     fn check_mul_u64() {

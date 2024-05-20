@@ -1,20 +1,15 @@
+// Written in 2014 by Andrew Poelstra <apoelstra@wpsoftware.net>
 // SPDX-License-Identifier: CC0-1.0
 
 #[cfg(doc)]
 use core::ops::Deref;
 
-use hex::FromHex;
-
-use crate::blockdata::opcodes::all::*;
-use crate::blockdata::opcodes::{self, Opcode};
-use crate::blockdata::script::witness_program::WitnessProgram;
-use crate::blockdata::script::witness_version::WitnessVersion;
-use crate::blockdata::script::{
-    opcode_to_verify, Builder, Instruction, PushBytes, Script, ScriptHash, WScriptHash,
-};
-use crate::key::{
-    PubkeyHash, PublicKey, TapTweak, TweakedPublicKey, UntweakedPublicKey, WPubkeyHash,
-};
+use crate::address::{WitnessProgram, WitnessVersion};
+use crate::blockdata::opcodes::{self, all::*};
+use crate::blockdata::script::{opcode_to_verify, Builder, Instruction, PushBytes, Script};
+use crate::hash_types::{PubkeyHash, ScriptHash, WPubkeyHash, WScriptHash};
+use crate::hashes::hex;
+use crate::key::{PublicKey, TapTweak, TweakedPublicKey, UntweakedPublicKey};
 use crate::prelude::*;
 use crate::taproot::TapNodeHash;
 
@@ -32,8 +27,7 @@ pub struct ScriptBuf(pub(in crate::blockdata::script) Vec<u8>);
 
 impl ScriptBuf {
     /// Creates a new empty script.
-    #[inline]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         ScriptBuf(Vec::new())
     }
 
@@ -117,27 +111,27 @@ impl ScriptBuf {
     }
 
     /// Generates P2WPKH-type of scriptPubkey.
-    pub fn new_p2wpkh(pubkey_hash: &WPubkeyHash) -> Self {
+    pub fn new_v0_p2wpkh(pubkey_hash: &WPubkeyHash) -> Self {
         // pubkey hash is 20 bytes long, so it's safe to use `new_witness_program_unchecked` (Segwitv0)
         ScriptBuf::new_witness_program_unchecked(WitnessVersion::V0, pubkey_hash)
     }
 
     /// Generates P2WSH-type of scriptPubkey with a given hash of the redeem script.
-    pub fn new_p2wsh(script_hash: &WScriptHash) -> Self {
+    pub fn new_v0_p2wsh(script_hash: &WScriptHash) -> Self {
         // script hash is 32 bytes long, so it's safe to use `new_witness_program_unchecked` (Segwitv0)
         ScriptBuf::new_witness_program_unchecked(WitnessVersion::V0, script_hash)
     }
 
     /// Generates P2TR for script spending path using an internal public key and some optional
     /// script tree merkle root.
-    pub fn new_p2tr(internal_key: UntweakedPublicKey, merkle_root: Option<TapNodeHash>) -> Self {
+    pub fn new_v1_p2tr(internal_key: UntweakedPublicKey, merkle_root: Option<TapNodeHash>) -> Self {
         let (output_key, _) = internal_key.tap_tweak(merkle_root);
         // output key is 32 bytes long, so it's safe to use `new_witness_program_unchecked` (Segwitv1)
         ScriptBuf::new_witness_program_unchecked(WitnessVersion::V1, output_key.serialize())
     }
 
     /// Generates P2TR for key spending path for a known [`TweakedPublicKey`].
-    pub fn new_p2tr_tweaked(output_key: TweakedPublicKey) -> Self {
+    pub fn new_v1_p2tr_tweaked(output_key: TweakedPublicKey) -> Self {
         // output key is 32 bytes long, so it's safe to use `new_witness_program_unchecked` (Segwitv1)
         ScriptBuf::new_witness_program_unchecked(WitnessVersion::V1, output_key.serialize())
     }
@@ -153,8 +147,9 @@ impl ScriptBuf {
     /// Generates P2WSH-type of scriptPubkey with a given [`WitnessVersion`] and the program bytes.
     /// Does not do any checks on version or program length.
     ///
-    /// Convenience method used by `new_p2wpkh`, `new_p2wsh`, `new_p2tr`, and `new_p2tr_tweaked`.
-    pub(crate) fn new_witness_program_unchecked<T: AsRef<PushBytes>>(
+    /// Convenience method used by `new_v0_p2wpkh`, `new_v0_p2wsh`, `new_v1_p2tr`, and
+    /// `new_v1_p2tr_tweaked`.
+    fn new_witness_program_unchecked<T: AsRef<PushBytes>>(
         version: WitnessVersion,
         program: T,
     ) -> Self {
@@ -168,23 +163,8 @@ impl ScriptBuf {
             .into_script()
     }
 
-    /// Creates the script code used for spending a P2WPKH output.
-    ///
-    /// The `scriptCode` is described in [BIP143].
-    ///
-    /// [BIP143]: <https://github.com/bitcoin/bips/blob/99701f68a88ce33b2d0838eb84e115cef505b4c2/bip-0143.mediawiki>
-    pub fn p2wpkh_script_code(wpkh: WPubkeyHash) -> ScriptBuf {
-        Builder::new()
-            .push_opcode(OP_DUP)
-            .push_opcode(OP_HASH160)
-            .push_slice(wpkh)
-            .push_opcode(OP_EQUALVERIFY)
-            .push_opcode(OP_CHECKSIG)
-            .into_script()
-    }
-
     /// Generates OP_RETURN-type of scriptPubkey for the given data.
-    pub fn new_op_return<T: AsRef<PushBytes>>(data: T) -> Self {
+    pub fn new_op_return<T: AsRef<PushBytes>>(data: &T) -> Self {
         Builder::new()
             .push_opcode(OP_RETURN)
             .push_slice(data)
@@ -192,7 +172,9 @@ impl ScriptBuf {
     }
 
     /// Creates a [`ScriptBuf`] from a hex string.
-    pub fn from_hex(s: &str) -> Result<Self, hex::HexToBytesError> {
+    pub fn from_hex(s: &str) -> Result<Self, hex::Error> {
+        use crate::hashes::hex::FromHex;
+
         let v = Vec::from_hex(s)?;
         Ok(ScriptBuf::from_bytes(v))
     }
@@ -211,8 +193,30 @@ impl ScriptBuf {
         self.0
     }
 
+    /// Computes the P2SH output corresponding to this redeem script.
+    pub fn to_p2sh(&self) -> ScriptBuf {
+        ScriptBuf::new_p2sh(&self.script_hash())
+    }
+
+    /// Returns the script code used for spending a P2WPKH output if this script is a script pubkey
+    /// for a P2WPKH output. The `scriptCode` is described in [BIP143].
+    ///
+    /// [BIP143]: <https://github.com/bitcoin/bips/blob/99701f68a88ce33b2d0838eb84e115cef505b4c2/bip-0143.mediawiki>
+    pub fn p2wpkh_script_code(&self) -> Option<ScriptBuf> {
+        self.v0_p2wpkh().map(|wpkh| {
+            Builder::new()
+                .push_opcode(OP_DUP)
+                .push_opcode(OP_HASH160)
+                // The `self` script is 0x00, 0x14, <pubkey_hash>
+                .push_slice(wpkh)
+                .push_opcode(OP_EQUALVERIFY)
+                .push_opcode(OP_CHECKSIG)
+                .into_script()
+        })
+    }
+
     /// Adds a single opcode to the script.
-    pub fn push_opcode(&mut self, data: Opcode) {
+    pub fn push_opcode(&mut self, data: opcodes::All) {
         self.0.push(data.to_u8());
     }
 
@@ -252,7 +256,7 @@ impl ScriptBuf {
         self.0.extend_from_slice(data.as_bytes());
     }
 
-    /// Computes the sum of `len` and the length of an appropriate push opcode.
+    /// Computes the sum of `len` and the lenght of an appropriate push opcode.
     pub(in crate::blockdata::script) fn reserved_len_for_slice(len: usize) -> usize {
         len + match len {
             0..=0x4b => 1,
@@ -306,7 +310,7 @@ impl ScriptBuf {
     /// alternative.
     ///
     /// See the public fn [`Self::scan_and_push_verify`] to learn more.
-    pub(in crate::blockdata::script) fn push_verify(&mut self, last_opcode: Option<Opcode>) {
+    pub(in crate::blockdata::script) fn push_verify(&mut self, last_opcode: Option<opcodes::All>) {
         match opcode_to_verify(last_opcode) {
             Some(opcode) => {
                 self.0.pop();
@@ -318,7 +322,7 @@ impl ScriptBuf {
 
     /// Converts this `ScriptBuf` into a [boxed](Box) [`Script`].
     ///
-    /// This method reallocates if the capacity is greater than length of the script but should not
+    /// This method reallocates if the capacity is greater than lenght of the script but should not
     /// when they are equal. If you know beforehand that you need to create a script of exact size
     /// use [`reserve_exact`](Self::reserve_exact) before adding data to the script so that the
     /// reallocation can be avoided.

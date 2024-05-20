@@ -1,18 +1,31 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2018 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
 
 //! SHA256d implementation (double SHA256).
 //!
 
+use core::str;
 use core::ops::Index;
 use core::slice::SliceIndex;
-use core::str;
 
-use crate::{sha256, FromSliceError};
+use crate::{Error, sha256};
 
 crate::internal_macros::hash_type! {
     256,
     true,
-    "Output of the SHA256d hash function."
+    "Output of the SHA256d hash function.",
+    "crate::util::json_hex_string::len_32"
 }
 
 type HashEngine = sha256::HashEngine;
@@ -30,12 +43,10 @@ fn from_engine(e: sha256::HashEngine) -> Hash {
 
 #[cfg(test)]
 mod tests {
-    use crate::{sha256d, Hash as _};
-
     #[test]
     #[cfg(feature = "alloc")]
     fn test() {
-        use crate::{sha256, HashEngine};
+        use crate::{sha256, sha256d, Hash, HashEngine};
 
         #[derive(Clone)]
         struct Test {
@@ -44,7 +55,6 @@ mod tests {
             output_str: &'static str,
         }
 
-        #[rustfmt::skip]
         let tests = vec![
             // Test vector copied out of rust-bitcoin
             Test {
@@ -83,20 +93,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fmt_roundtrips() {
-        let hash = sha256d::Hash::hash(b"some arbitrary bytes");
-        let hex = format!("{}", hash);
-        let rinsed = hex.parse::<sha256d::Hash>().expect("failed to parse hex");
-        assert_eq!(rinsed, hash)
-    }
-
     #[cfg(feature = "serde")]
     #[test]
     fn sha256_serde() {
-        use serde_test::{assert_tokens, Configure, Token};
+        use serde_test::{Configure, Token, assert_tokens};
+        use crate::{sha256d, Hash};
 
-        #[rustfmt::skip]
         static HASH_BYTES: [u8; 32] = [
             0xef, 0x53, 0x7f, 0x25, 0xc8, 0x95, 0xbf, 0xa7,
             0x82, 0x52, 0x65, 0x29, 0xa9, 0xb6, 0x3d, 0x97,
@@ -106,10 +108,7 @@ mod tests {
 
         let hash = sha256d::Hash::from_slice(&HASH_BYTES).expect("right number of bytes");
         assert_tokens(&hash.compact(), &[Token::BorrowedBytes(&HASH_BYTES[..])]);
-        assert_tokens(
-            &hash.readable(),
-            &[Token::Str("6cfb35868c4465b7c289d7d5641563aa973db6a929655282a7bf95c8257f53ef")],
-        );
+        assert_tokens(&hash.readable(), &[Token::Str("6cfb35868c4465b7c289d7d5641563aa973db6a929655282a7bf95c8257f53ef")]);
     }
 }
 
@@ -117,13 +116,13 @@ mod tests {
 mod benches {
     use test::Bencher;
 
-    use crate::{sha256d, Hash, HashEngine};
+    use crate::{Hash, HashEngine, sha256d};
 
     #[bench]
     pub fn sha256d_10(bh: &mut Bencher) {
         let mut engine = sha256d::Hash::engine();
         let bytes = [1u8; 10];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;
@@ -133,7 +132,7 @@ mod benches {
     pub fn sha256d_1k(bh: &mut Bencher) {
         let mut engine = sha256d::Hash::engine();
         let bytes = [1u8; 1024];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;
@@ -143,7 +142,7 @@ mod benches {
     pub fn sha256d_64k(bh: &mut Bencher) {
         let mut engine = sha256d::Hash::engine();
         let bytes = [1u8; 65536];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;

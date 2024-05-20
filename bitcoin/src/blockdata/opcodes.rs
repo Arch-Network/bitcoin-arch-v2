@@ -1,3 +1,4 @@
+// Written in 2014 by Andrew Poelstra <apoelstra@wpsoftware.net>
 // SPDX-License-Identifier: CC0-1.0
 
 //! Bitcoin script opcodes.
@@ -8,18 +9,18 @@
 
 #![allow(non_camel_case_types)]
 
-use core::fmt;
+#[cfg(feature = "serde")] use serde;
 
-use internals::debug_from_display;
+#[cfg(feature = "serde")] use crate::prelude::*;
 
-#[cfg(feature = "serde")]
-use crate::prelude::*;
+use core::{fmt, convert::From};
+use bitcoin_internals::debug_from_display;
 
 /// A script Opcode.
 ///
 /// We do not implement Ord on this type because there is no natural ordering on opcodes, but there
 /// may appear to be one (e.g. because all the push opcodes appear in a consecutive block) and we
-/// don't want to encourage subtly buggy code. Please use [`Opcode::classify`] to distinguish different
+/// don't want to encourage subtly buggy code. Please use [`All::classify`] to distinguish different
 /// types of opcodes.
 ///
 /// <details>
@@ -29,7 +30,7 @@ use crate::prelude::*;
 ///   in contexts where only pushes are supposed to be allowed.
 /// </details>
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Opcode {
+pub struct All {
     code: u8,
 }
 
@@ -37,41 +38,33 @@ use self::all::*;
 
 macro_rules! all_opcodes {
     ($($op:ident => $val:expr, $doc:expr);*) => {
+        // private import so we don't have to use `all::OP_FOO` in this file.
+
         /// Enables wildcard imports to bring into scope all opcodes and nothing else.
         ///
         /// The `all` module is provided so one can use a wildcard import `use bitcoin::opcodes::all::*` to
-        /// get all the `OP_FOO` opcodes without getting other types defined in `opcodes` (e.g. `Opcode`, `Class`).
+        /// get all the `OP_FOO` opcodes without getting other types defined in `opcodes` (e.g. `All`, `Class`).
         ///
         /// This module is guaranteed to never contain anything except opcode constants and all opcode
         /// constants are guaranteed to begin with OP_.
         pub mod all {
-            use super::Opcode;
-            $(
-                #[doc = $doc]
-                pub const $op: Opcode = Opcode { code: $val};
-            )*
+            use super::All;
+                $(
+                    #[doc = $doc]
+                    pub const $op: All = All { code: $val};
+                )*
         }
 
-        /// Push an empty array onto the stack.
-        pub static OP_0: Opcode = OP_PUSHBYTES_0;
-        /// Empty stack is also FALSE.
-        pub static OP_FALSE: Opcode = OP_PUSHBYTES_0;
-        /// Number 1 is also TRUE.
-        pub static OP_TRUE: Opcode = OP_PUSHNUM_1;
-        /// Previously called OP_NOP2.
-        pub static OP_NOP2: Opcode = OP_CLTV;
-        /// Previously called OP_NOP3.
-        pub static OP_NOP3: Opcode = OP_CSV;
-
-        impl fmt::Display for Opcode {
-            fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        impl fmt::Display for All {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                  match *self {
                    $(
-                        $op => core::fmt::Display::fmt(stringify!($op), f),
+                        $op => fmt::Display::fmt(stringify!($op), f),
                     )+
                 }
             }
         }
+
     }
 }
 
@@ -158,7 +151,7 @@ all_opcodes! {
     OP_PUSHNUM_NEG1 => 0x4f, "Push the array `0x81` onto the stack.";
     OP_RESERVED => 0x50, "Synonym for OP_RETURN.";
     OP_PUSHNUM_1 => 0x51, "Push the array `0x01` onto the stack.";
-    OP_PUSHNUM_2 => 0x52, "Push the array `0x02` onto the stack.";
+    OP_PUSHNUM_2 => 0x52, "the array `0x02` onto the stack.";
     OP_PUSHNUM_3 => 0x53, "Push the array `0x03` onto the stack.";
     OP_PUSHNUM_4 => 0x54, "Push the array `0x04` onto the stack.";
     OP_PUSHNUM_5 => 0x55, "Push the array `0x05` onto the stack.";
@@ -349,7 +342,7 @@ pub enum ClassifyContext {
     Legacy,
 }
 
-impl Opcode {
+impl All {
     /// Classifies an Opcode into a broad class.
     #[inline]
     pub fn classify(self, ctx: ClassifyContext) -> Class {
@@ -358,7 +351,6 @@ impl Opcode {
             (OP_VERIF, _) | (OP_VERNOTIF, _) | (OP_INVALIDOPCODE, _) => Class::IllegalOp,
 
             // 15 opcodes illegal in Legacy context
-            #[rustfmt::skip]
             (OP_CAT, ctx) | (OP_SUBSTR, ctx)
             | (OP_LEFT, ctx) | (OP_RIGHT, ctx)
             | (OP_INVERT, ctx)
@@ -369,15 +361,13 @@ impl Opcode {
 
             // 87 opcodes of SuccessOp class only in TapScript context
             (op, ClassifyContext::TapScript)
-                if op.code == 80
-                    || op.code == 98
-                    || (op.code >= 126 && op.code <= 129)
-                    || (op.code >= 131 && op.code <= 134)
-                    || (op.code >= 137 && op.code <= 138)
-                    || (op.code >= 141 && op.code <= 142)
-                    || (op.code >= 149 && op.code <= 153)
-                    || (op.code >= 187 && op.code <= 254) =>
-                Class::SuccessOp,
+            if op.code == 80 || op.code == 98 ||
+                (op.code >= 126 && op.code <= 129) ||
+                (op.code >= 131 && op.code <= 134) ||
+                (op.code >= 137 && op.code <= 138) ||
+                (op.code >= 141 && op.code <= 142) ||
+                (op.code >= 149 && op.code <= 153) ||
+                (op.code >= 187 && op.code <= 254) => Class::SuccessOp,
 
             // 11 opcodes of NoOp class
             (OP_NOP, _) => Class::NoOp,
@@ -387,9 +377,9 @@ impl Opcode {
             (OP_RETURN, _) => Class::ReturnOp,
 
             // 4 opcodes operating equally to `OP_RETURN` only in Legacy context
-            (OP_RESERVED, ctx) | (OP_RESERVED1, ctx) | (OP_RESERVED2, ctx) | (OP_VER, ctx)
-                if ctx == ClassifyContext::Legacy =>
-                Class::ReturnOp,
+            (OP_RESERVED, ctx)
+            | (OP_RESERVED1, ctx) | (OP_RESERVED2, ctx)
+            | (OP_VER, ctx) if ctx == ClassifyContext::Legacy => Class::ReturnOp,
 
             // 71 opcodes operating equally to `OP_RETURN` only in Legacy context
             (op, ClassifyContext::Legacy) if op.code >= OP_CHECKSIGADD.code => Class::ReturnOp,
@@ -402,8 +392,9 @@ impl Opcode {
             (OP_PUSHNUM_NEG1, _) => Class::PushNum(-1),
 
             // 16 opcodes of PushNum class
-            (op, _) if op.code >= OP_PUSHNUM_1.code && op.code <= OP_PUSHNUM_16.code =>
-                Class::PushNum(1 + self.code as i32 - OP_PUSHNUM_1.code as i32),
+            (op, _) if op.code >= OP_PUSHNUM_1.code && op.code <= OP_PUSHNUM_16.code => {
+                Class::PushNum(1 + self.code as i32 - OP_PUSHNUM_1.code as i32)
+            },
 
             // 76 opcodes of PushBytes class
             (op, _) if op.code <= OP_PUSHBYTES_75.code => Class::PushBytes(self.code as u32),
@@ -413,37 +404,25 @@ impl Opcode {
         }
     }
 
-    /// Encodes [`Opcode`] as a byte.
+    /// Encodes [`All`] as a byte.
     #[inline]
-    pub const fn to_u8(self) -> u8 { self.code }
-
-    /// Encodes PUSHNUM [`Opcode`] as a `u8` representing its number (1-16).
-    ///
-    /// Does not convert `OP_FALSE` to 0. Only `1` to `OP_PUSHNUM_16` are covered.
-    ///
-    /// # Returns
-    ///
-    /// Returns `None` if `self` is not a PUSHNUM.
-    #[inline]
-    pub(crate) const fn decode_pushnum(self) -> Option<u8> {
-        const START: u8 = OP_PUSHNUM_1.code;
-        const END: u8 = OP_PUSHNUM_16.code;
-        match self.code {
-            START..=END => Some(self.code - START + 1),
-            _ => None,
-        }
+    pub const fn to_u8(self) -> u8 {
+        self.code
     }
 }
 
-impl From<u8> for Opcode {
+impl From<u8> for All {
     #[inline]
-    fn from(b: u8) -> Opcode { Opcode { code: b } }
+    fn from(b: u8) -> All {
+        All {code: b}
+    }
 }
 
-debug_from_display!(Opcode);
+debug_from_display!(All);
 
 #[cfg(feature = "serde")]
-impl serde::Serialize for Opcode {
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+impl serde::Serialize for All {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -451,6 +430,17 @@ impl serde::Serialize for Opcode {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+/// Push an empty array onto the stack.
+pub static OP_0: All = OP_PUSHBYTES_0;
+/// Empty stack is also FALSE.
+pub static OP_FALSE: All = OP_PUSHBYTES_0;
+/// Number 1 is also TRUE.
+pub static OP_TRUE: All = OP_PUSHNUM_1;
+/// Previously called OP_NOP2.
+pub static OP_NOP2: All = OP_CLTV;
+/// Previously called OP_NOP3.
+pub static OP_NOP3: All = OP_CSV;
 
 /// Broad categories of opcodes with similar behavior.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -468,7 +458,7 @@ pub enum Class {
     /// Does nothing.
     NoOp,
     /// Any opcode not covered above.
-    Ordinary(Ordinary),
+    Ordinary(Ordinary)
 }
 
 macro_rules! ordinary_opcode {
@@ -481,7 +471,7 @@ macro_rules! ordinary_opcode {
         }
 
         impl fmt::Display for Ordinary {
-            fn fmt(&self, f: &mut fmt::Formatter) -> core::fmt::Result {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 match *self {
                    $(Ordinary::$op => { f.pad(stringify!($op)) }),*
                 }
@@ -489,15 +479,15 @@ macro_rules! ordinary_opcode {
         }
 
         impl Ordinary {
-            fn with(b: Opcode) -> Self {
+            fn with(b: All) -> Self {
                 match b {
                     $( $op => { Ordinary::$op } ),*
                     _ => unreachable!("construction of `Ordinary` type from non-ordinary opcode {}", b),
                 }
             }
 
-            /// Try to create a [`Ordinary`] from an [`Opcode`].
-            pub fn from_opcode(b: Opcode) -> Option<Self> {
+            /// Try to create from an All
+            pub fn try_from_all(b: All) -> Option<Self> {
                 match b {
                     $( $op => { Some(Ordinary::$op) } ),*
                     _ => None,
@@ -534,9 +524,11 @@ ordinary_opcode! {
 }
 
 impl Ordinary {
-    /// Encodes [`Opcode`] as a byte.
+    /// Encodes [`All`] as a byte.
     #[inline]
-    pub fn to_u8(self) -> u8 { self as u8 }
+    pub fn to_u8(self) -> u8 {
+        self as u8
+    }
 }
 
 #[cfg(test)]
@@ -547,83 +539,36 @@ mod tests {
 
     macro_rules! roundtrip {
         ($unique:expr, $op:ident) => {
-            assert_eq!($op, Opcode::from($op.to_u8()));
+            assert_eq!($op, All::from($op.to_u8()));
 
             let s1 = format!("{}", $op);
             let s2 = format!("{:?}", $op);
             assert_eq!(s1, s2);
             assert_eq!(s1, stringify!($op));
             assert!($unique.insert(s1));
-        };
+        }
     }
 
     #[test]
     fn formatting_works() {
-        let op = all::OP_NOP;
-        let s = format!("{:>10}", op);
-        assert_eq!(s, "    OP_NOP");
-    }
-
-    #[test]
-    fn decode_pushnum() {
-        // Test all possible opcodes
-        // - Sanity check
-        assert_eq!(OP_PUSHNUM_1.code, 0x51_u8);
-        assert_eq!(OP_PUSHNUM_16.code, 0x60_u8);
-        for i in 0x00..=0xff_u8 {
-            let expected = match i {
-                // OP_PUSHNUM_1 ..= OP_PUSHNUM_16
-                0x51..=0x60 => Some(i - 0x50),
-                _ => None,
-            };
-            assert_eq!(Opcode::from(i).decode_pushnum(), expected);
-        }
-
-        // Test the named opcode constants
-        // - This is the OP right before PUSHNUMs start
-        assert!(OP_RESERVED.decode_pushnum().is_none());
-        assert_eq!(OP_PUSHNUM_1.decode_pushnum().expect("pushnum"), 1);
-        assert_eq!(OP_PUSHNUM_2.decode_pushnum().expect("pushnum"), 2);
-        assert_eq!(OP_PUSHNUM_3.decode_pushnum().expect("pushnum"), 3);
-        assert_eq!(OP_PUSHNUM_4.decode_pushnum().expect("pushnum"), 4);
-        assert_eq!(OP_PUSHNUM_5.decode_pushnum().expect("pushnum"), 5);
-        assert_eq!(OP_PUSHNUM_6.decode_pushnum().expect("pushnum"), 6);
-        assert_eq!(OP_PUSHNUM_7.decode_pushnum().expect("pushnum"), 7);
-        assert_eq!(OP_PUSHNUM_8.decode_pushnum().expect("pushnum"), 8);
-        assert_eq!(OP_PUSHNUM_9.decode_pushnum().expect("pushnum"), 9);
-        assert_eq!(OP_PUSHNUM_10.decode_pushnum().expect("pushnum"), 10);
-        assert_eq!(OP_PUSHNUM_11.decode_pushnum().expect("pushnum"), 11);
-        assert_eq!(OP_PUSHNUM_12.decode_pushnum().expect("pushnum"), 12);
-        assert_eq!(OP_PUSHNUM_13.decode_pushnum().expect("pushnum"), 13);
-        assert_eq!(OP_PUSHNUM_14.decode_pushnum().expect("pushnum"), 14);
-        assert_eq!(OP_PUSHNUM_15.decode_pushnum().expect("pushnum"), 15);
-        assert_eq!(OP_PUSHNUM_16.decode_pushnum().expect("pushnum"), 16);
-        // - This is the OP right after PUSHNUMs end
-        assert!(OP_NOP.decode_pushnum().is_none());
+            let op = all::OP_NOP;
+            let s = format!("{:>10}", op);
+            assert_eq!(s, "    OP_NOP");
     }
 
     #[test]
     fn classify_test() {
         let op174 = OP_CHECKMULTISIG;
-        assert_eq!(
-            op174.classify(ClassifyContext::Legacy),
-            Class::Ordinary(Ordinary::OP_CHECKMULTISIG)
-        );
+        assert_eq!(op174.classify(ClassifyContext::Legacy), Class::Ordinary(Ordinary::OP_CHECKMULTISIG));
         assert_eq!(op174.classify(ClassifyContext::TapScript), Class::ReturnOp);
 
         let op175 = OP_CHECKMULTISIGVERIFY;
-        assert_eq!(
-            op175.classify(ClassifyContext::Legacy),
-            Class::Ordinary(Ordinary::OP_CHECKMULTISIGVERIFY)
-        );
+        assert_eq!(op175.classify(ClassifyContext::Legacy),  Class::Ordinary(Ordinary::OP_CHECKMULTISIGVERIFY));
         assert_eq!(op175.classify(ClassifyContext::TapScript), Class::ReturnOp);
 
         let op186 = OP_CHECKSIGADD;
         assert_eq!(op186.classify(ClassifyContext::Legacy), Class::ReturnOp);
-        assert_eq!(
-            op186.classify(ClassifyContext::TapScript),
-            Class::Ordinary(Ordinary::OP_CHECKSIGADD)
-        );
+        assert_eq!(op186.classify(ClassifyContext::TapScript), Class::Ordinary(Ordinary::OP_CHECKSIGADD));
 
         let op187 = OP_RETURN_187;
         assert_eq!(op187.classify(ClassifyContext::Legacy), Class::ReturnOp);
