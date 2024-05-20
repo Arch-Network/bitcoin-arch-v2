@@ -1,5 +1,5 @@
 use bitcoin::common::types::Message;
-use bitcoin_arch_v2 as bitcoin;
+// use bitcoin_arch_v2 as bitcoin;
 
 use bitcoin::hashes::Hash;
 use bitcoin::{

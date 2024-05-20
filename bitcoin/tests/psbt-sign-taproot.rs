@@ -1,7 +1,6 @@
 #![cfg(not(feature = "rand-std"))]
 
 use bitcoin::key::Keypair;
-use bitcoin_arch_v2 as bitcoin;
 
 use bitcoin::bip32::{DerivationPath, Fingerprint};
 use bitcoin::consensus::encode::serialize_hex;

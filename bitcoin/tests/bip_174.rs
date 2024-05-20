@@ -1,6 +1,5 @@
 //! Tests PSBT integration vectors from BIP 174
 //! defined at <https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki#test-vectors>
-use bitcoin_arch_v2 as bitcoin;
 
 use std::collections::BTreeMap;
 use std::str::FromStr;

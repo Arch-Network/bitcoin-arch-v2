@@ -1,4 +1,4 @@
-extern crate bitcoin_arch_v2 as bitcoin;
+// extern crate bitcoin_arch_v2 as bitcoin;
 
 use std::str::FromStr;
 use std::{env, process};
