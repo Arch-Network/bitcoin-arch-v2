@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: CC0-1.0
-
 //! Non-public macros
 
 macro_rules! arr_newtype_fmt_impl {
@@ -9,11 +7,11 @@ macro_rules! arr_newtype_fmt_impl {
             fn fmt(&self, f: &mut $crate::_export::_core::fmt::Formatter) -> $crate::_export::_core::fmt::Result {
                 #[allow(unused)]
                 use crate::Hash as _;
-                let case = $crate::hex::Case::Lower;
+                let case = internals::hex::Case::Lower;
                 if <$ty<$($gen),*>>::DISPLAY_BACKWARD {
-                    $crate::hex::fmt_hex_exact!(f, $bytes, self.0.iter().rev(), case)
+                    internals::hex::display::fmt_hex_exact!(f, $bytes, self.0.iter().rev(), case)
                 } else {
-                    $crate::hex::fmt_hex_exact!(f, $bytes, self.0.iter(), case)
+                    internals::hex::display::fmt_hex_exact!(f, $bytes, self.0.iter(), case)
                 }
             }
         }
@@ -23,11 +21,11 @@ macro_rules! arr_newtype_fmt_impl {
             fn fmt(&self, f: &mut $crate::_export::_core::fmt::Formatter) -> $crate::_export::_core::fmt::Result {
                 #[allow(unused)]
                 use crate::Hash as _;
-                let case = $crate::hex::Case::Upper;
+                let case = internals::hex::Case::Upper;
                 if <$ty<$($gen),*>>::DISPLAY_BACKWARD {
-                    $crate::hex::fmt_hex_exact!(f, $bytes, self.0.iter().rev(), case)
+                    internals::hex::display::fmt_hex_exact!(f, $bytes, self.0.iter().rev(), case)
                 } else {
-                    $crate::hex::fmt_hex_exact!(f, $bytes, self.0.iter(), case)
+                    internals::hex::display::fmt_hex_exact!(f, $bytes, self.0.iter(), case)
                 }
             }
         }
@@ -71,31 +69,35 @@ pub(crate) use arr_newtype_fmt_impl;
 macro_rules! hash_trait_impls {
     ($bits:expr, $reverse:expr $(, $gen:ident: $gent:ident)*) => {
         impl<$($gen: $gent),*> Hash<$($gen),*> {
-            /// Zero cost conversion between a fixed length byte array shared reference and
-            /// a shared reference to this Hash type.
-            pub fn from_bytes_ref(bytes: &[u8; $bits / 8]) -> &Self {
-                // Safety: Sound because Self is #[repr(transparent)] containing [u8; $bits / 8]
-                unsafe { &*(bytes as *const _ as *const Self) }
+            /// Displays hex forwards, regardless of how this type would display it naturally.
+            ///
+            /// This is mainly intended as an internal method and you shouldn't need it unless
+            /// you're doing something special.
+            pub fn forward_hex(&self) -> impl '_ + core::fmt::LowerHex + core::fmt::UpperHex {
+                internals::hex::display::DisplayHex::as_hex(&self.0)
             }
 
-            /// Zero cost conversion between a fixed length byte array exclusive reference and
-            /// an exclusive reference to this Hash type.
-            pub fn from_bytes_mut(bytes: &mut [u8; $bits / 8]) -> &mut Self {
-                // Safety: Sound because Self is #[repr(transparent)] containing [u8; $bits / 8]
-                unsafe { &mut *(bytes as *mut _ as *mut Self) }
+            /// Displays hex backwards, regardless of how this type would display it naturally.
+            ///
+            /// This is mainly intended as an internal method and you shouldn't need it unless
+            /// you're doing something special.
+            pub fn backward_hex(&self) -> impl '_ + core::fmt::LowerHex + core::fmt::UpperHex {
+                internals::hex::display::DisplayArray::<_, [u8; $bits / 8 * 2]>::new(self.0.iter().rev())
             }
         }
 
         impl<$($gen: $gent),*> str::FromStr for Hash<$($gen),*> {
-            type Err = $crate::hex::HexToArrayError;
-            fn from_str(s: &str) -> $crate::_export::_core::result::Result<Self, Self::Err> {
-                use $crate::{Hash, hex::{FromHex}};
+            type Err = $crate::hex::Error;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                use $crate::hex::{FromHex, HexIterator};
+                use $crate::Hash;
 
-                let mut bytes = <[u8; $bits / 8]>::from_hex(s)?;
-                if $reverse {
-                    bytes.reverse();
-                }
-                Ok(Self::from_byte_array(bytes))
+                let inner: [u8; $bits / 8] = if $reverse {
+                    FromHex::from_byte_iter(HexIterator::new(s)?.rev())?
+                } else {
+                    FromHex::from_byte_iter(HexIterator::new(s)?)?
+                };
+                Ok(Self::from_byte_array(inner))
             }
         }
 
@@ -133,9 +135,9 @@ macro_rules! hash_trait_impls {
                 from_engine(e)
             }
 
-            fn from_slice(sl: &[u8]) -> $crate::_export::_core::result::Result<Hash<$($gen),*>, FromSliceError> {
+            fn from_slice(sl: &[u8]) -> Result<Hash<$($gen),*>, Error> {
                 if sl.len() != $bits / 8 {
-                    Err(FromSliceError{expected: Self::LEN, got: sl.len()})
+                    Err(Error::InvalidLength(Self::LEN, sl.len()))
                 } else {
                     let mut ret = [0; $bits / 8];
                     ret.copy_from_slice(sl);
@@ -178,35 +180,27 @@ pub(crate) use hash_trait_impls;
 /// The `from_engine` free-standing function is still required with this macro. See the doc of
 /// [`hash_trait_impls`].
 macro_rules! hash_type {
-    ($bits:expr, $reverse:expr, $doc:literal) => {
+    ($bits:expr, $reverse:expr, $doc:literal, $schemars:literal) => {
         #[doc = $doc]
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[cfg_attr(feature = "schemars", derive(crate::schemars::JsonSchema))]
         #[repr(transparent)]
-        pub struct Hash([u8; $bits / 8]);
+        pub struct Hash(
+            #[cfg_attr(feature = "schemars", schemars(schema_with = $schemars))]
+            [u8; $bits / 8]
+        );
 
         impl Hash {
-            fn internal_new(arr: [u8; $bits / 8]) -> Self { Hash(arr) }
+            fn internal_new(arr: [u8; $bits / 8]) -> Self {
+                Hash(arr)
+            }
 
-            fn internal_engine() -> HashEngine { Default::default() }
-        }
-
-        #[cfg(feature = "schemars")]
-        impl schemars::JsonSchema for Hash {
-            fn schema_name() -> String { "Hash".to_owned() }
-
-            fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-                let len = $bits / 8;
-                let mut schema: schemars::schema::SchemaObject = <String>::json_schema(gen).into();
-                schema.string = Some(Box::new(schemars::schema::StringValidation {
-                    max_length: Some(len * 2),
-                    min_length: Some(len * 2),
-                    pattern: Some("[0-9a-fA-F]+".to_owned()),
-                }));
-                schema.into()
+            fn internal_engine() -> HashEngine {
+                Default::default()
             }
         }
 
         crate::internal_macros::hash_trait_impls!($bits, $reverse);
-    };
+    }
 }
 pub(crate) use hash_type;

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: CC0-1.0
 
+use crate::key::XOnlyPublicKey;
+use crate::prelude::*;
+
+use core::convert::TryFrom;
 use core::fmt;
 use core::str::FromStr;
-
-use crate::XOnlyPublicKey;
-use hashes::{hash160, ripemd160, sha256, sha256d};
 
 use crate::bip32::KeySource;
 use crate::blockdata::script::ScriptBuf;
@@ -12,13 +13,12 @@ use crate::blockdata::transaction::{Transaction, TxOut};
 use crate::blockdata::witness::Witness;
 use crate::crypto::key::PublicKey;
 use crate::crypto::{ecdsa, taproot};
-use crate::prelude::*;
+use crate::hashes::{self, hash160, ripemd160, sha256, sha256d};
 use crate::psbt::map::Map;
 use crate::psbt::serialize::Deserialize;
 use crate::psbt::{self, error, raw, Error};
 use crate::sighash::{
-    EcdsaSighashType, InvalidSighashTypeError, NonStandardSighashTypeError, SighashTypeParseError,
-    TapSighashType,
+    self, EcdsaSighashType, NonStandardSighashType, SighashTypeParseError, TapSighashType,
 };
 use crate::taproot::{ControlBlock, LeafVersion, TapLeafHash, TapNodeHash};
 
@@ -70,11 +70,11 @@ const PSBT_IN_PROPRIETARY: u8 = 0xFC;
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Input {
     /// The non-witness transaction this input spends from. Should only be
-    /// `Option::Some` for inputs which spend non-segwit outputs or
+    /// [std::option::Option::Some] for inputs which spend non-segwit outputs or
     /// if it is unknown whether an input spends a segwit output.
     pub non_witness_utxo: Option<Transaction>,
     /// The transaction output this input spends from. Should only be
-    /// `Option::Some` for inputs which spend segwit outputs,
+    /// [std::option::Option::Some] for inputs which spend segwit outputs,
     /// including P2SH embedded ones.
     pub witness_utxo: Option<TxOut>,
     /// A map from public keys to their corresponding signature as would be
@@ -97,6 +97,7 @@ pub struct Input {
     /// The finalized, fully-constructed scriptWitness with signatures and any
     /// other scripts necessary for this input to pass validation.
     pub final_script_witness: Option<Witness>,
+    /// TODO: Proof of reserves commitment
     /// RIPEMD160 hash to preimage map.
     #[cfg_attr(
         feature = "serde",
@@ -213,15 +214,15 @@ impl From<TapSighashType> for PsbtSighashType {
 impl PsbtSighashType {
     /// Returns the [`EcdsaSighashType`] if the [`PsbtSighashType`] can be
     /// converted to one.
-    pub fn ecdsa_hash_ty(self) -> Result<EcdsaSighashType, NonStandardSighashTypeError> {
+    pub fn ecdsa_hash_ty(self) -> Result<EcdsaSighashType, NonStandardSighashType> {
         EcdsaSighashType::from_standard(self.inner)
     }
 
     /// Returns the [`TapSighashType`] if the [`PsbtSighashType`] can be
     /// converted to one.
-    pub fn taproot_hash_ty(self) -> Result<TapSighashType, InvalidSighashTypeError> {
+    pub fn taproot_hash_ty(self) -> Result<TapSighashType, sighash::Error> {
         if self.inner > 0xffu32 {
-            Err(InvalidSighashTypeError(self.inner))
+            Err(sighash::Error::InvalidSighashType(self.inner))
         } else {
             TapSighashType::from_consensus_u8(self.inner as u8)
         }
@@ -250,7 +251,7 @@ impl Input {
     /// # Errors
     ///
     /// If the `sighash_type` field is set to a non-standard ECDSA sighash value.
-    pub fn ecdsa_hash_ty(&self) -> Result<EcdsaSighashType, NonStandardSighashTypeError> {
+    pub fn ecdsa_hash_ty(&self) -> Result<EcdsaSighashType, NonStandardSighashType> {
         self.sighash_type
             .map(|sighash_type| sighash_type.ecdsa_hash_ty())
             .unwrap_or(Ok(EcdsaSighashType::All))
@@ -262,7 +263,7 @@ impl Input {
     /// # Errors
     ///
     /// If the `sighash_type` field is set to a invalid Taproot sighash value.
-    pub fn taproot_hash_ty(&self) -> Result<TapSighashType, InvalidSighashTypeError> {
+    pub fn taproot_hash_ty(&self) -> Result<TapSighashType, sighash::Error> {
         self.sighash_type
             .map(|sighash_type| sighash_type.taproot_hash_ty())
             .unwrap_or(Ok(TapSighashType::Default))
@@ -611,10 +612,10 @@ mod test {
         let back = PsbtSighashType::from_str(&s).unwrap();
 
         assert_eq!(back, sighash);
+        assert_eq!(back.ecdsa_hash_ty(), Err(NonStandardSighashType(nonstd)));
         assert_eq!(
-            back.ecdsa_hash_ty(),
-            Err(NonStandardSighashTypeError(nonstd))
+            back.taproot_hash_ty(),
+            Err(sighash::Error::InvalidSighashType(nonstd))
         );
-        assert_eq!(back.taproot_hash_ty(), Err(InvalidSighashTypeError(nonstd)));
     }
 }

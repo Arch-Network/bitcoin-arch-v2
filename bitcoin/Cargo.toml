@@ -4,11 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = [ "std" ]
-std = ["base58/std", "bech32/std", "hashes/std", "hex/std", "internals/std", "io/std", "units/std"]
-rand-std = ["std"]
-serde = ["actual-serde", "hashes/serde", "internals/serde", "units/serde"]
+default = [ "std"]
+serde = ["actual-serde", "bitcoin_hashes/serde"]
 bitcoinconsensus-std = ["bitcoinconsensus/std", "std"]
+
+# At least one of std, no-std must be enabled.
+#
+# The no-std feature doesn't disable std - you need to turn off the std feature for that by disabling default.
+# Instead no-std enables additional features required for this crate to be usable without std.
+# As a result, both can be enabled without conflict.
+std = ["bitcoin_hashes/std", "bech32/std", "bitcoin-internals/std"]
+no-std = ["core2", "bitcoin_hashes/alloc", "bitcoin_hashes/core2"]
 
 [package.metadata.docs.rs]
 all-features = true
@@ -16,52 +22,25 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 k256 = { version = "0.13.3", default-features = false, features = ["arithmetic", "alloc", "schnorr", "ecdsa", "sha256"] }
-units = { package = "bitcoin-units", version = "0.1.0", default-features = false, features = ["alloc"] }
-internals = { package = "bitcoin-internals", version = "0.3.0", features = ["alloc"] }
-io = { package = "bitcoin-io", version = "0.1.1", default-features = false, features = ["alloc"] }
-hashes = { package = "bitcoin_hashes", version = "0.14.0", default-features = false, features = ["alloc", "io"] }
-hex = { package = "hex-conservative", version = "0.2.0", default-features = false, features = ["alloc"] }
-base58 = { package = "base58ck", version = "0.1.0", default-features = false }
-bech32 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+bitcoin-internals = { path = "../internals", package = "bitcoin-private", version = "0.1.0" }
+bech32 = { version = "0.9.0", default-features = false }
+bitcoin_hashes = { version = "0.12.0", default-features = false }
 once_cell = { version = "1.18.0", default-features = false, features = ["std"] }
-rand = "0.8.5"
-hex_lit = "0.1.1"
 subtle = { version = "2.5.0", default-features = false, features = ["std", "const-generics"] }
+hex = { package = "hex-conservative", version = "0.2.0", default-features = false, features = ["alloc"] }
+hex_lit = "0.1.1"
 
-bitcoinconsensus = { version = "0.105.0+25.1", default-features = false, optional = true }
+base64 = { version = "0.13.0", optional = true }
+bitcoinconsensus = { version = "0.20.2-0.5.0", default-features = false, optional = true }
+core2 = { version = "0.3.0", default-features = false, features = ["alloc"], optional = true }
 # Do NOT use this as a feature! Use the `serde` feature instead.
 actual-serde = { package = "serde", version = "1.0.103", default-features = false, features = [ "derive", "alloc" ], optional = true }
 
 [dev-dependencies]
 serde_json = "1.0.0"
 serde_test = "1.0.19"
+serde_derive = "1.0.103"
 bincode = "1.3.1"
 
 [target.'cfg(mutate)'.dev-dependencies]
 mutagen = { git = "https://github.com/llogiq/mutagen" }
-
-#[[example]]
-#name = "bip32"
-
-[[example]]
-name = "handshake"
-required-features = ["std", "rand-std"]
-
-[[example]]
-name = "ecdsa-psbt"
-required-features = ["std", "bitcoinconsensus"]
-
-[[example]]
-name = "sign-tx-segwit-v0"
-required-features = ["std", "rand-std"]
-
-[[example]]
-name = "sign-tx-taproot"
-required-features = ["std", "rand-std"]
-
-[[example]]
-name = "taproot-psbt"
-required-features = ["std", "rand-std", "bitcoinconsensus"]
-
-[[example]]
-name = "sighash"

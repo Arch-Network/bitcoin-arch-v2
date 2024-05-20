@@ -1,21 +1,40 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2018 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
+
+// This module is largely copied from the rust-crypto ripemd.rs file;
+// while rust-crypto is licensed under Apache, that file specifically
+// was written entirely by Andrew Poelstra, who is re-licensing its
+// contents here as CC0.
 
 //! RIPEMD160 implementation.
 //!
 
+use core::{cmp, str};
+use core::convert::TryInto;
 use core::ops::Index;
 use core::slice::SliceIndex;
-use core::{cmp, str};
 
-use crate::{FromSliceError, HashEngine as _};
+use crate::{Error, HashEngine as _};
 
 crate::internal_macros::hash_type! {
     160,
     false,
-    "Output of the RIPEMD160 hash function."
+    "Output of the RIPEMD160 hash function.",
+    "crate::util::json_hex_string::len_20"
 }
 
-#[cfg(not(hashes_fuzz))]
+#[cfg(not(fuzzing))]
 fn from_engine(mut e: HashEngine) -> Hash {
     // pad buffer with a single 1-bit then all 0s, until there are exactly 8 bytes remaining
     let data_len = e.length as u64;
@@ -35,7 +54,7 @@ fn from_engine(mut e: HashEngine) -> Hash {
     Hash(e.midstate())
 }
 
-#[cfg(hashes_fuzz)]
+#[cfg(fuzzing)]
 fn from_engine(e: HashEngine) -> Hash {
     let mut res = e.midstate();
     res[0] ^= (e.length & 0xff) as u8;
@@ -65,7 +84,7 @@ impl Default for HashEngine {
 impl crate::HashEngine for HashEngine {
     type MidState = [u8; 20];
 
-    #[cfg(not(hashes_fuzz))]
+    #[cfg(not(fuzzing))]
     fn midstate(&self) -> [u8; 20] {
         let mut ret = [0; 20];
         for (val, ret_bytes) in self.h.iter().zip(ret.chunks_exact_mut(4)) {
@@ -74,7 +93,7 @@ impl crate::HashEngine for HashEngine {
         ret
     }
 
-    #[cfg(hashes_fuzz)]
+    #[cfg(fuzzing)]
     fn midstate(&self) -> [u8; 20] {
         let mut ret = [0; 20];
         ret.copy_from_slice(&self.buffer[..20]);
@@ -83,36 +102,13 @@ impl crate::HashEngine for HashEngine {
 
     const BLOCK_SIZE: usize = 64;
 
-    fn n_bytes_hashed(&self) -> usize { self.length }
+    fn n_bytes_hashed(&self) -> usize {
+        self.length
+    }
 
     engine_input_impl!();
 }
 
-#[cfg(feature = "small-hash")]
-#[macro_use]
-mod small_hash {
-    #[rustfmt::skip]
-    pub(super) fn round(a: u32, _b: u32, c: u32, _d: u32, e: u32,
-                        x: u32, bits: u32, add: u32, round: u32,
-    ) -> (u32, u32) {
-        let a = a.wrapping_add(round).wrapping_add(x).wrapping_add(add);
-        let a = a.rotate_left(bits).wrapping_add(e);
-        let c = c.rotate_left(10);
-
-        (a, c)
-    }
-
-    macro_rules! round(
-        ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr,
-         $x:expr, $bits:expr, $add:expr, $round:expr) => ({
-            let updates = small_hash::round($a, $b, $c, $d, $e, $x, $bits, $add, $round);
-            $a = updates.0;
-            $c = updates.1;
-        });
-    );
-}
-
-#[cfg(not(feature = "small-hash"))]
 macro_rules! round(
     ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr,
      $x:expr, $bits:expr, $add:expr, $round:expr) => ({
@@ -411,9 +407,7 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn test() {
-        use std::convert::TryFrom;
-
-        use crate::{ripemd160, Hash, HashEngine};
+        use crate::{Hash, HashEngine, ripemd160};
 
         #[derive(Clone)]
         struct Test {
@@ -422,7 +416,6 @@ mod tests {
             output_str: &'static str,
         }
 
-        #[rustfmt::skip]
         let tests = vec![
             // Test messages from FIPS 180-1
             Test {
@@ -473,24 +466,12 @@ mod tests {
             },
         ];
 
-        for mut test in tests {
+        for test in tests {
             // Hash through high-level API, check hex encoding/decoding
             let hash = ripemd160::Hash::hash(test.input.as_bytes());
             assert_eq!(hash, test.output_str.parse::<ripemd160::Hash>().expect("parse hex"));
             assert_eq!(&hash[..], &test.output[..]);
             assert_eq!(&hash.to_string(), &test.output_str);
-            assert_eq!(
-                ripemd160::Hash::from_bytes_ref(
-                    <&[u8; 20]>::try_from(&*test.output).expect("known length")
-                ),
-                &hash
-            );
-            assert_eq!(
-                ripemd160::Hash::from_bytes_mut(
-                    <&mut [u8; 20]>::try_from(&mut *test.output).expect("known length")
-                ),
-                &hash
-            );
 
             // Hash through engine, checking that we can input byte by byte
             let mut engine = ripemd160::Hash::engine();
@@ -506,11 +487,9 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn ripemd_serde() {
-        use serde_test::{assert_tokens, Configure, Token};
-
+        use serde_test::{Configure, Token, assert_tokens};
         use crate::{ripemd160, Hash};
 
-        #[rustfmt::skip]
         static HASH_BYTES: [u8; 20] = [
             0x13, 0x20, 0x72, 0xdf,
             0x69, 0x09, 0x33, 0x83,
@@ -529,13 +508,13 @@ mod tests {
 mod benches {
     use test::Bencher;
 
-    use crate::{ripemd160, Hash, HashEngine};
+    use crate::{Hash, HashEngine, ripemd160};
 
     #[bench]
     pub fn ripemd160_10(bh: &mut Bencher) {
         let mut engine = ripemd160::Hash::engine();
         let bytes = [1u8; 10];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;
@@ -545,7 +524,7 @@ mod benches {
     pub fn ripemd160_1k(bh: &mut Bencher) {
         let mut engine = ripemd160::Hash::engine();
         let bytes = [1u8; 1024];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;
@@ -555,9 +534,10 @@ mod benches {
     pub fn ripemd160_64k(bh: &mut Bencher) {
         let mut engine = ripemd160::Hash::engine();
         let bytes = [1u8; 65536];
-        bh.iter(|| {
+        bh.iter( || {
             engine.input(&bytes);
         });
         bh.bytes = bytes.len() as u64;
     }
+
 }

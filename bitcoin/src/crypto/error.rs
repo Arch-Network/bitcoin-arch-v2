@@ -1,5 +1,5 @@
+use bitcoin_internals::write_err;
 use core::fmt;
-use internals::write_err;
 
 /// The main error type for this library.
 #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]

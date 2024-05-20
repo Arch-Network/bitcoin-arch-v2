@@ -2,7 +2,7 @@
 
 use core::fmt;
 use core::ops::BitXor;
-use internals::impl_array_newtype;
+use bitcoin_internals::impl_array_newtype;
 
 /// Represents the parity passed between FFI function calls.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]

@@ -1,74 +1,89 @@
-// SPDX-License-Identifier: CC0-1.0
+// Bitcoin Hashes Library
+// Written in 2019 by
+//   Andrew Poelstra <apoelstra@wpsoftware.net>
+//
+// To the extent possible under law, the author(s) have dedicated all
+// copyright and related and neighboring rights to this software to
+// the public domain worldwide. This software is distributed without
+// any warranty.
+//
+// You should have received a copy of the CC0 Public Domain Dedication
+// along with this software.
+// If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
 
-//! `std` / `io` Impls.
+//! `std` / `core2` Impls.
 //!
-//! Implementations of traits defined in `std` / `io` and not in `core`.
+//! Implementations of traits defined in `std` / `core2` and not in `core`.
 //!
 
-use bitcoin_io::impl_write;
+#[cfg(feature = "std")]
+use std::io;
 
-use crate::{hmac, ripemd160, sha1, sha256, sha512, siphash24, HashEngine};
+#[cfg(not(feature = "std"))]
+use core2::io;
 
-impl_write!(
-    sha1::HashEngine,
-    |us: &mut sha1::HashEngine, buf| {
-        us.input(buf);
+use crate::{HashEngine, sha1, sha256, sha512, ripemd160, siphash24, hmac};
+
+impl io::Write for sha1::HashEngine {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
         Ok(buf.len())
-    },
-    |_us| { Ok(()) }
-);
+    }
+}
 
-impl_write!(
-    sha256::HashEngine,
-    |us: &mut sha256::HashEngine, buf| {
-        us.input(buf);
-        Ok(buf.len())
-    },
-    |_us| { Ok(()) }
-);
+impl io::Write for sha256::HashEngine {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
 
-impl_write!(
-    sha512::HashEngine,
-    |us: &mut sha512::HashEngine, buf| {
-        us.input(buf);
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
         Ok(buf.len())
-    },
-    |_us| { Ok(()) }
-);
+    }
+}
 
-impl_write!(
-    ripemd160::HashEngine,
-    |us: &mut ripemd160::HashEngine, buf| {
-        us.input(buf);
-        Ok(buf.len())
-    },
-    |_us| { Ok(()) }
-);
+impl io::Write for sha512::HashEngine {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
 
-impl_write!(
-    siphash24::HashEngine,
-    |us: &mut siphash24::HashEngine, buf| {
-        us.input(buf);
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
         Ok(buf.len())
-    },
-    |_us| { Ok(()) }
-);
+    }
+}
 
-impl_write!(
-    hmac::HmacEngine<T>,
-    |us: &mut hmac::HmacEngine<T>, buf| {
-        us.input(buf);
+impl io::Write for ripemd160::HashEngine {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
         Ok(buf.len())
-    },
-    |_us| { Ok(()) },
-    T: crate::Hash
-);
+    }
+}
+
+impl io::Write for siphash24::HashEngine {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
+        Ok(buf.len())
+    }
+}
+
+impl<T: crate::Hash> io::Write for hmac::HmacEngine<T> {
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.input(buf);
+        Ok(buf.len())
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use bitcoin_io::Write;
+    use super::io::Write;
 
-    use crate::{hash160, hmac, ripemd160, sha1, sha256, sha256d, sha512, siphash24, Hash};
+    use crate::{Hash, sha1, sha256, sha256d, sha512, ripemd160, hash160, siphash24, hmac};
 
     macro_rules! write_test {
         ($mod:ident, $exp_empty:expr, $exp_256:expr, $exp_64k:expr,) => {
@@ -76,17 +91,26 @@ mod tests {
             fn $mod() {
                 let mut engine = $mod::Hash::engine();
                 engine.write_all(&[]).unwrap();
-                assert_eq!(format!("{}", $mod::Hash::from_engine(engine)), $exp_empty);
+                assert_eq!(
+                    format!("{}", $mod::Hash::from_engine(engine)),
+                    $exp_empty
+                );
 
                 let mut engine = $mod::Hash::engine();
                 engine.write_all(&[1; 256]).unwrap();
-                assert_eq!(format!("{}", $mod::Hash::from_engine(engine)), $exp_256);
+                assert_eq!(
+                    format!("{}", $mod::Hash::from_engine(engine)),
+                    $exp_256
+                );
 
                 let mut engine = $mod::Hash::engine();
                 engine.write_all(&[99; 64000]).unwrap();
-                assert_eq!(format!("{}", $mod::Hash::from_engine(engine)), $exp_64k);
+                assert_eq!(
+                    format!("{}", $mod::Hash::from_engine(engine)),
+                    $exp_64k
+                );
             }
-        };
+        }
     }
 
     write_test!(
@@ -134,7 +158,12 @@ mod tests {
         "a9608c952c8dbcc20c53803d2ca5ad31d64d9313",
     );
 
-    write_test!(siphash24, "d70077739d4b921e", "3a3ccefde9b5b1e3", "ce456e4e4ecbc5bf",);
+    write_test!(
+        siphash24,
+        "d70077739d4b921e",
+        "3a3ccefde9b5b1e3",
+        "ce456e4e4ecbc5bf",
+    );
 
     #[test]
     fn hmac() {
