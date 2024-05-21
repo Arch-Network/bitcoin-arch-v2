@@ -1253,8 +1253,6 @@ pub use self::display_from_str::PsbtParseError;
 mod tests {
     use hashes::{hash160, ripemd160, sha256};
     use hex::{test_hex_unwrap as hex, FromHex};
-    #[cfg(feature = "rand-std")]
-    use secp256k1::{All, SecretKey};
 
     use super::*;
     use crate::bip32::ChildNumber;
@@ -2201,28 +2199,26 @@ mod tests {
     }
 
     #[cfg(feature = "rand-std")]
-    fn gen_keys() -> (PrivateKey, PublicKey, Secp256k1<All>) {
-        use secp256k1::rand::thread_rng;
+    fn gen_keys() -> (PrivateKey, PublicKey) {
+        use rand::thread_rng;
 
-        let secp = Secp256k1::new();
+        let sk = k256::SecretKey::random(&mut thread_rng());
+        let priv_key = PrivateKey::new(sk.clone(), NetworkKind::Test);
+        let pk = PublicKey::from_private_key(&sk);
 
-        let sk = SecretKey::new(&mut thread_rng());
-        let priv_key = PrivateKey::new(sk, NetworkKind::Test);
-        let pk = PublicKey::from_private_key(&secp, &priv_key);
-
-        (priv_key, pk, secp)
+        (priv_key, pk)
     }
 
     #[test]
     #[cfg(feature = "rand-std")]
     fn get_key_btree_map() {
-        let (priv_key, pk, secp) = gen_keys();
+        let (priv_key, pk) = gen_keys();
 
         let mut key_map = BTreeMap::new();
-        key_map.insert(pk, priv_key);
+        key_map.insert(pk, priv_key.clone());
 
         let got = key_map
-            .get_key(KeyRequest::Pubkey(pk), &secp)
+            .get_key(KeyRequest::Pubkey(pk))
             .expect("failed to get key");
         assert_eq!(got.unwrap(), priv_key)
     }
@@ -2351,7 +2347,7 @@ mod tests {
         };
         let mut psbt = Psbt::from_unsigned_tx(unsigned_tx).unwrap();
 
-        let (priv_key, pk, secp) = gen_keys();
+        let (priv_key, pk) = gen_keys();
 
         // key_map implements `GetKey` using KeyRequest::Pubkey. A pubkey key request does not use
         // keysource so we use default `KeySource` (fingreprint and derivation path) below.
@@ -2367,7 +2363,7 @@ mod tests {
 
         let mut map = BTreeMap::new();
         map.insert(
-            pk.inner,
+            pk,
             (Fingerprint::default(), DerivationPath::default()),
         );
         psbt.inputs[0].bip32_derivation = map;
@@ -2380,7 +2376,7 @@ mod tests {
         };
         psbt.inputs[1].witness_utxo = Some(txout_unknown_future);
 
-        let (signing_keys, _) = psbt.sign(&key_map, &secp).unwrap_err();
+        let (signing_keys, _) = psbt.sign(&key_map).unwrap_err();
 
         assert_eq!(signing_keys.len(), 1);
         assert_eq!(signing_keys[&0], vec![pk]);

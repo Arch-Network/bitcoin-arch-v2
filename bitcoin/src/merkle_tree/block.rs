@@ -542,7 +542,7 @@ impl std::error::Error for MerkleBlockError {
 mod tests {
     use hex::{test_hex_unwrap as hex};
     #[cfg(feature = "rand-std")]
-    use secp256k1::rand::prelude::*;
+    use rand::prelude::*;
     use super::*;
     use crate::consensus::encode::{deserialize, serialize};
 
