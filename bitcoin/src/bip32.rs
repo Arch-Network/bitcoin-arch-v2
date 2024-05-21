@@ -600,7 +600,7 @@ impl From<key::Error> for Error {
             key::Error::InvalidKeyPrefix(_) => Error::Secp256k1(CryptoError::InvalidPublicKey),
             key::Error::Hex(e) => Error::Hex(e),
             key::Error::InvalidHexLength(got) => Error::InvalidPublicKeyHexLength(got),
-            key::Error::InvalidLength(got) => Error::Secp256k1(CryptoError::InvalidPublicKey),
+            key::Error::InvalidLength(_) => Error::Secp256k1(CryptoError::InvalidPublicKey),
         }
     }
 }
