@@ -16,19 +16,24 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 k256 = { version = "0.13.3", default-features = false, features = ["arithmetic", "alloc", "schnorr", "ecdsa", "sha256"] }
-units = { package = "bitcoin-units", version = "0.1.0", default-features = false, features = ["alloc"] }
-internals = { package = "bitcoin-internals", version = "0.3.0", features = ["alloc"] }
-io = { package = "bitcoin-io", version = "0.1.1", default-features = false, features = ["alloc"] }
-hashes = { package = "bitcoin_hashes", version = "0.14.0", default-features = false, features = ["alloc", "io"] }
-hex = { package = "hex-conservative", version = "0.2.0", default-features = false, features = ["alloc"] }
-base58 = { package = "base58ck", version = "0.1.0", default-features = false }
-bech32 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 once_cell = { version = "1.18.0", default-features = false, features = ["std"] }
 rand = "0.8.5"
-hex_lit = "0.1.1"
 subtle = { version = "2.5.0", default-features = false, features = ["std", "const-generics"] }
+base58 = { package = "base58ck", version = "0.1.0", default-features = false }
+bech32 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+hashes = { package = "bitcoin_hashes", version = "0.14.0", default-features = false, features = ["alloc", "io"] }
+hex = { package = "hex-conservative", version = "0.2.0", default-features = false, features = ["alloc"] }
+hex_lit = "0.1.1"
+internals = { package = "bitcoin-internals", version = "0.3.0", features = ["alloc"] }
+io = { package = "bitcoin-io", version = "0.1.1", default-features = false, features = ["alloc"] }
+secp256k1 = { version = "0.29.0", default-features = false, features = ["hashes", "alloc"] }
+units = { package = "bitcoin-units", version = "0.1.0", default-features = false, features = ["alloc"] }
 
+base64 = { version = "0.21.3", optional = true }
+ordered = { version = "0.2.0", optional = true }
+# Only use this feature for no-std builds, otherwise use bitcoinconsensus-std.
 bitcoinconsensus = { version = "0.105.0+25.1", default-features = false, optional = true }
+
 # Do NOT use this as a feature! Use the `serde` feature instead.
 actual-serde = { package = "serde", version = "1.0.103", default-features = false, features = [ "derive", "alloc" ], optional = true }
 
