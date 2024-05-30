@@ -14,6 +14,9 @@ use io::{BufRead, Write};
 use mutagen::mutate;
 use units::parse;
 
+#[cfg(feature = “borsh”)]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use crate::blockdata::block::BlockHash;
 use crate::consensus::encode::{self, Decodable, Encodable};
 #[cfg(doc)]
@@ -65,6 +68,7 @@ macro_rules! do_impl {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = “borsh”, derive(BorshSerialize, BorshDeserialize))]
 pub struct Work(U256);
 
 impl Work {
@@ -100,6 +104,7 @@ impl Sub for Work {
 /// ref: <https://en.bitcoin.it/wiki/Target>
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = “borsh”, derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Target(U256);
 
@@ -268,6 +273,7 @@ do_impl!(Target);
 /// is exactly this format.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = “borsh”, derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct CompactTarget(u32);
 

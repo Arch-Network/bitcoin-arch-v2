@@ -6,6 +6,9 @@
 //! This module provides keys used in Bitcoin that can be roundtrip
 //! (de)serialized.
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use crate::util::misc::add_tweak_to_scalar;
 use crate::{prelude::*, CryptoError, Parity, Scalar};
 
@@ -598,6 +601,10 @@ impl From<k256::PublicKey> for MaybePublicKey {
 
 /// Represents the X coordinates of [`PublicKey`]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct XOnlyPublicKey {
     inner: [u8; 32],
 }
@@ -946,6 +953,7 @@ pub type UntweakedPublicKey = XOnlyPublicKey;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct TweakedPublicKey(XOnlyPublicKey);
 
 impl fmt::LowerHex for TweakedPublicKey {
@@ -979,7 +987,6 @@ pub type UntweakedKeypair = KeyPair;
 /// # }
 /// ```
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct TweakedKeyPair(KeyPair);

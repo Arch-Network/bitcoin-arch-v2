@@ -4,6 +4,9 @@
 #[cfg(doc)]
 use core::ops::Deref;
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use crate::address::{WitnessProgram, WitnessVersion};
 use crate::blockdata::opcodes::{self, all::*};
 use crate::blockdata::script::{opcode_to_verify, Builder, Instruction, PushBytes, Script};
@@ -23,6 +26,7 @@ use crate::taproot::TapNodeHash;
 ///
 /// [deref coercions]: https://doc.rust-lang.org/std/ops/trait.Deref.html#more-on-deref-coercion
 #[derive(Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct ScriptBuf(pub(in crate::blockdata::script) Vec<u8>);
 
 impl ScriptBuf {

@@ -13,6 +13,9 @@ use core::ops::{Add, Div, Mul, Not, Rem, Shl, Shr, Sub};
 #[cfg(all(test, mutate))]
 use mutagen::mutate;
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use crate::consensus::encode::{self, Decodable, Encodable};
 #[cfg(doc)]
 use crate::consensus::Params;
@@ -27,34 +30,48 @@ macro_rules! do_impl {
         impl $ty {
             /// Creates `Self` from a big-endian byte array.
             #[inline]
-            pub fn from_be_bytes(bytes: [u8; 32]) -> $ty { $ty(U256::from_be_bytes(bytes)) }
+            pub fn from_be_bytes(bytes: [u8; 32]) -> $ty {
+                $ty(U256::from_be_bytes(bytes))
+            }
 
             /// Creates `Self` from a little-endian byte array.
             #[inline]
-            pub fn from_le_bytes(bytes: [u8; 32]) -> $ty { $ty(U256::from_le_bytes(bytes)) }
+            pub fn from_le_bytes(bytes: [u8; 32]) -> $ty {
+                $ty(U256::from_le_bytes(bytes))
+            }
 
             /// Converts `self` to a big-endian byte array.
             #[inline]
-            pub fn to_be_bytes(self) -> [u8; 32] { self.0.to_be_bytes() }
+            pub fn to_be_bytes(self) -> [u8; 32] {
+                self.0.to_be_bytes()
+            }
 
             /// Converts `self` to a little-endian byte array.
             #[inline]
-            pub fn to_le_bytes(self) -> [u8; 32] { self.0.to_le_bytes() }
+            pub fn to_le_bytes(self) -> [u8; 32] {
+                self.0.to_le_bytes()
+            }
         }
 
         impl fmt::Display for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                fmt::Display::fmt(&self.0, f)
+            }
         }
 
         impl fmt::LowerHex for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::LowerHex::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                fmt::LowerHex::fmt(&self.0, f)
+            }
         }
 
         impl fmt::UpperHex for $ty {
             #[inline]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::UpperHex::fmt(&self.0, f) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                fmt::UpperHex::fmt(&self.0, f)
+            }
         }
     };
 }
@@ -66,6 +83,7 @@ macro_rules! do_impl {
 /// ref: <https://en.bitcoin.it/wiki/Work>
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Work(U256);
 
@@ -83,7 +101,9 @@ impl Work {
     pub const REGTEST_MIN: Work = Work(U256(0x7fff_ff00_0000_0000_0000_0000_0000_0000_u128, 0));
 
     /// Converts this [`Work`] to [`Target`].
-    pub fn to_target(self) -> Target { Target(self.0.inverse()) }
+    pub fn to_target(self) -> Target {
+        Target(self.0.inverse())
+    }
 
     /// Returns log2 of this work.
     ///
@@ -92,18 +112,24 @@ impl Work {
     /// `log2_work` output in its logs.
     #[cfg(feature = "std")]
     #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-    pub fn log2(self) -> f64 { self.0.to_f64().log2() }
+    pub fn log2(self) -> f64 {
+        self.0.to_f64().log2()
+    }
 }
 do_impl!(Work);
 
 impl Add for Work {
     type Output = Work;
-    fn add(self, rhs: Self) -> Self { Work(self.0 + rhs.0) }
+    fn add(self, rhs: Self) -> Self {
+        Work(self.0 + rhs.0)
+    }
 }
 
 impl Sub for Work {
     type Output = Work;
-    fn sub(self, rhs: Self) -> Self { Work(self.0 - rhs.0) }
+    fn sub(self, rhs: Self) -> Self {
+        Work(self.0 - rhs.0)
+    }
 }
 
 /// A 256 bit integer representing target.
@@ -116,6 +142,7 @@ impl Sub for Work {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct Target(U256);
 
 impl Target {
@@ -135,7 +162,9 @@ impl Target {
     /// The maximum possible target (see [`Target::MAX`]).
     ///
     /// This is provided for consistency with Rust 1.41.1, newer code should use [`Target::MAX`].
-    pub const fn max_value() -> Self { Target::MAX }
+    pub const fn max_value() -> Self {
+        Target::MAX
+    }
 
     /// Computes the [`Target`] value from a compact representation.
     ///
@@ -200,7 +229,9 @@ impl Target {
     /// "Work" is defined as the work done to mine a block with this target value (recorded in the
     /// block header in compact form as nBits). This is not the same as the difficulty to mine a
     /// block with this target (see `Self::difficulty`).
-    pub fn to_work(self) -> Work { Work(self.0.inverse()) }
+    pub fn to_work(self) -> Work {
+        Work(self.0.inverse())
+    }
 
     /// Computes the popular "difficulty" measure for mining.
     ///
@@ -234,21 +265,27 @@ impl Target {
     ///
     /// [`difficulty`]: Target::difficulty
     #[cfg_attr(all(test, mutate), mutate)]
-    pub fn difficulty_float(&self) -> f64 { TARGET_MAX_F64 / self.0.to_f64() }
+    pub fn difficulty_float(&self) -> f64 {
+        TARGET_MAX_F64 / self.0.to_f64()
+    }
 
     /// Computes the minimum valid [`Target`] threshold allowed for a block in which a difficulty
     /// adjustment occurs.
     ///
     /// The difficulty can only decrease or increase by a factor of 4 max on each difficulty
     /// adjustment period.
-    pub fn min_difficulty_transition_threshold(&self) -> Self { Self(self.0 >> 2) }
+    pub fn min_difficulty_transition_threshold(&self) -> Self {
+        Self(self.0 >> 2)
+    }
 
     /// Computes the maximum valid [`Target`] threshold allowed for a block in which a difficulty
     /// adjustment occurs.
     ///
     /// The difficulty can only decrease or increase by a factor of 4 max on each difficulty
     /// adjustment period.
-    pub fn max_difficulty_transition_threshold(&self) -> Self { Self(self.0 << 2) }
+    pub fn max_difficulty_transition_threshold(&self) -> Self {
+        Self(self.0 << 2)
+    }
 }
 do_impl!(Target);
 
@@ -261,19 +298,26 @@ do_impl!(Target);
 /// is exactly this format.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct CompactTarget(u32);
 
 impl CompactTarget {
     /// Creates a [`CompactTarget`] from a consensus encoded `u32`.
-    pub fn from_consensus(bits: u32) -> Self { Self(bits) }
+    pub fn from_consensus(bits: u32) -> Self {
+        Self(bits)
+    }
 
     /// Returns the consensus encoded `u32` representation of this [`CompactTarget`].
-    pub fn to_consensus(self) -> u32 { self.0 }
+    pub fn to_consensus(self) -> u32 {
+        self.0
+    }
 }
 
 impl From<CompactTarget> for Target {
-    fn from(c: CompactTarget) -> Self { Target::from_compact(c) }
+    fn from(c: CompactTarget) -> Self {
+        Target::from_compact(c)
+    }
 }
 
 impl FromHexStr for CompactTarget {
@@ -305,8 +349,10 @@ impl Decodable for CompactTarget {
 struct U256(u128, u128);
 
 impl U256 {
-    const MAX: U256 =
-        U256(0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff, 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff);
+    const MAX: U256 = U256(
+        0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
+        0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,
+    );
 
     const ZERO: U256 = U256(0, 0);
 
@@ -373,22 +419,34 @@ impl U256 {
     }
 
     #[cfg_attr(all(test, mutate), mutate)]
-    fn is_zero(&self) -> bool { self.0 == 0 && self.1 == 0 }
+    fn is_zero(&self) -> bool {
+        self.0 == 0 && self.1 == 0
+    }
 
     #[cfg_attr(all(test, mutate), mutate)]
-    fn is_one(&self) -> bool { self.0 == 0 && self.1 == 1 }
+    fn is_one(&self) -> bool {
+        self.0 == 0 && self.1 == 1
+    }
 
     #[cfg_attr(all(test, mutate), mutate)]
-    fn is_max(&self) -> bool { self.0 == u128::max_value() && self.1 == u128::max_value() }
+    fn is_max(&self) -> bool {
+        self.0 == u128::max_value() && self.1 == u128::max_value()
+    }
 
     /// Returns the low 32 bits.
-    fn low_u32(&self) -> u32 { self.low_u128() as u32 }
+    fn low_u32(&self) -> u32 {
+        self.low_u128() as u32
+    }
 
     /// Returns the low 64 bits.
-    fn low_u64(&self) -> u64 { self.low_u128() as u64 }
+    fn low_u64(&self) -> u64 {
+        self.low_u128() as u64
+    }
 
     /// Returns the low 128 bits.
-    fn low_u128(&self) -> u128 { self.1 }
+    fn low_u128(&self) -> u128 {
+        self.1
+    }
 
     /// Returns `self` as a `u128` saturating to `u128::MAX` if `self` is too big.
     // Matagen gives false positive because >= and > both return u128::MAX
@@ -419,8 +477,12 @@ impl U256 {
     // mutagen false positive: binop_bit, replace `|` with `^`
     fn mul_u64(self, rhs: u64) -> (U256, bool) {
         let mut carry: u128 = 0;
-        let mut split_le =
-            [self.1 as u64, (self.1 >> 64) as u64, self.0 as u64, (self.0 >> 64) as u64];
+        let mut split_le = [
+            self.1 as u64,
+            (self.1 >> 64) as u64,
+            self.0 as u64,
+            (self.0 >> 64) as u64,
+        ];
 
         for word in &mut split_le {
             // TODO: Use `carrying_mul` when stabilized: https://github.com/rust-lang/rust/issues/85532
@@ -690,7 +752,11 @@ impl U256 {
         // If self is 0, exponent should be 0 (special meaning) and mantissa will end up 0 too
         // Otherwise, (255 - n) + 1022 so it simplifies to 1277 - n
         // 1023 and 1022 are the cutoffs for the exponent having the msb next to the decimal point
-        let exponent = if self == Self::ZERO { 0 } else { 1277 - leading_zeroes as u64 };
+        let exponent = if self == Self::ZERO {
+            0
+        } else {
+            1277 - leading_zeroes as u64
+        };
         // Step 7: sign bit is always 0, exponent is shifted into place
         // Use addition instead of bitwise OR to saturate the exponent if mantissa overflows
         f64::from_bits((exponent << 52) + mantissa)
@@ -702,7 +768,9 @@ impl U256 {
 const TARGET_MAX_F64: f64 = 2.695953529101131e67;
 
 impl<T: Into<u128>> From<T> for U256 {
-    fn from(x: T) -> Self { U256(0, x.into()) }
+    fn from(x: T) -> Self {
+        U256(0, x.into())
+    }
 }
 
 /// Error from `TryFrom<signed type>` implementations, occurs when input is negative.
@@ -711,7 +779,11 @@ pub struct TryFromError(i128);
 
 impl fmt::Display for TryFromError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "attempt to create unsigned integer type from negative number: {}", self.0)
+        write!(
+            f,
+            "attempt to create unsigned integer type from negative number: {}",
+            self.0
+        )
     }
 }
 
@@ -748,28 +820,38 @@ impl Mul for U256 {
 
 impl Div for U256 {
     type Output = Self;
-    fn div(self, rhs: Self) -> Self { self.div_rem(rhs).0 }
+    fn div(self, rhs: Self) -> Self {
+        self.div_rem(rhs).0
+    }
 }
 
 impl Rem for U256 {
     type Output = Self;
-    fn rem(self, rhs: Self) -> Self { self.div_rem(rhs).1 }
+    fn rem(self, rhs: Self) -> Self {
+        self.div_rem(rhs).1
+    }
 }
 
 impl Not for U256 {
     type Output = Self;
 
-    fn not(self) -> Self { U256(!self.0, !self.1) }
+    fn not(self) -> Self {
+        U256(!self.0, !self.1)
+    }
 }
 
 impl Shl<u32> for U256 {
     type Output = Self;
-    fn shl(self, shift: u32) -> U256 { self.wrapping_shl(shift) }
+    fn shl(self, shift: u32) -> U256 {
+        self.wrapping_shl(shift)
+    }
 }
 
 impl Shr<u32> for U256 {
     type Output = Self;
-    fn shr(self, shift: u32) -> U256 { self.wrapping_shr(shift) }
+    fn shr(self, shift: u32) -> U256 {
+        self.wrapping_shr(shift)
+    }
 }
 
 impl fmt::Display for U256 {
@@ -783,7 +865,9 @@ impl fmt::Display for U256 {
 }
 
 impl fmt::Debug for U256 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:#x}", self) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#x}", self)
+    }
 }
 
 macro_rules! impl_hex {
@@ -798,6 +882,28 @@ macro_rules! impl_hex {
 impl_hex!(LowerHex, bitcoin_internals::hex::Case::Lower);
 impl_hex!(UpperHex, bitcoin_internals::hex::Case::Upper);
 
+#[cfg(feature = "borsh")]
+impl borsh::ser::BorshSerialize for U256 {
+    #[inline]
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        let bytes = self.to_be_bytes();
+        bytes.serialize(writer)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl borsh::de::BorshDeserialize for U256 {
+    fn deserialize_reader<R>(buf: &mut R) -> Result<Self, borsh::io::Error>
+    where
+        R: borsh::io::Read,
+    {
+        let b = borsh::from_reader::<_, [u8; 32]>(buf).map_err(|_| {
+            borsh::io::Error::new(borsh::io::ErrorKind::Other, "failed to deserialize U256")
+        })?;
+        Ok(U256::from_be_bytes(b))
+    }
+}
+
 #[cfg(feature = "serde")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 impl crate::serde::Serialize for U256 {
@@ -808,7 +914,9 @@ impl crate::serde::Serialize for U256 {
         struct DisplayHex(U256);
 
         impl fmt::Display for DisplayHex {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{:x}", self.0) }
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{:x}", self.0)
+            }
         }
 
         if serializer.is_human_readable() {
@@ -884,7 +992,9 @@ impl<'de> crate::serde::Deserialize<'de> for U256 {
                 where
                     E: serde::de::Error,
                 {
-                    let b = v.try_into().map_err(|_| de::Error::invalid_length(v.len(), &self))?;
+                    let b = v
+                        .try_into()
+                        .map_err(|_| de::Error::invalid_length(v.len(), &self))?;
                     Ok(U256::from_be_bytes(b))
                 }
             }
@@ -919,11 +1029,15 @@ mod tests {
     use super::*;
 
     impl<T: Into<u128>> From<T> for Target {
-        fn from(x: T) -> Self { Self(U256::from(x)) }
+        fn from(x: T) -> Self {
+            Self(U256::from(x))
+        }
     }
 
     impl<T: Into<u128>> From<T> for Work {
-        fn from(x: T) -> Self { Self(U256::from(x)) }
+        fn from(x: T) -> Self {
+            Self(U256::from(x))
+        }
     }
 
     impl U256 {
@@ -1027,7 +1141,10 @@ mod tests {
     fn u256_display() {
         assert_eq!(format!("{}", U256::from(100_u32)), "100",);
         assert_eq!(format!("{}", U256::ZERO), "0",);
-        assert_eq!(format!("{}", U256::from(u64::max_value())), format!("{}", u64::max_value()),);
+        assert_eq!(
+            format!("{}", U256::from(u64::max_value())),
+            format!("{}", u64::max_value()),
+        );
         assert_eq!(
             format!("{}", U256::MAX),
             "115792089237316195423570985008687907853269984665640564039457584007913129639935",
@@ -1088,8 +1205,10 @@ mod tests {
         assert!(small <= small);
     }
 
-    const WANT: U256 =
-        U256(0x1bad_cafe_dead_beef_deaf_babe_2bed_feed, 0xbaad_f00d_defa_ceda_11fe_d2ba_d1c0_ffe0);
+    const WANT: U256 = U256(
+        0x1bad_cafe_dead_beef_deaf_babe_2bed_feed,
+        0xbaad_f00d_defa_ceda_11fe_d2ba_d1c0_ffe0,
+    );
 
     #[rustfmt::skip]
     const BE_BYTES: [u8; 32] = [
@@ -1240,27 +1359,50 @@ mod tests {
         assert_eq!(add, U256::from_array([0, 0, 1, 0xBD5B_7DDF_BD5B_7DDE]));
         // Bitshifts
         let shl = add << 88;
-        assert_eq!(shl, U256::from_array([0, 0x01BD_5B7D, 0xDFBD_5B7D_DE00_0000, 0]));
+        assert_eq!(
+            shl,
+            U256::from_array([0, 0x01BD_5B7D, 0xDFBD_5B7D_DE00_0000, 0])
+        );
         let shr = shl >> 40;
-        assert_eq!(shr, U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5B, 0x7DDE_0000_0000_0000]));
+        assert_eq!(
+            shr,
+            U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5B, 0x7DDE_0000_0000_0000])
+        );
         // Increment
         let mut incr = shr;
         incr = incr.wrapping_inc();
-        assert_eq!(incr, U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5B, 0x7DDE_0000_0000_0001]));
+        assert_eq!(
+            incr,
+            U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5B, 0x7DDE_0000_0000_0001])
+        );
         // Subtraction
         let sub = incr.wrapping_sub(init);
-        assert_eq!(sub, U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5A, 0x9F30_4110_2152_4112]));
+        assert_eq!(
+            sub,
+            U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5A, 0x9F30_4110_2152_4112])
+        );
         // Multiplication
         let (mult, _) = sub.mul_u64(300);
-        assert_eq!(mult, U256::from_array([0, 0, 0x0209_E737_8231_E632, 0x8C8C_3EE7_0C64_4118]));
+        assert_eq!(
+            mult,
+            U256::from_array([0, 0, 0x0209_E737_8231_E632, 0x8C8C_3EE7_0C64_4118])
+        );
         // Division
         assert_eq!(U256::from(105_u32) / U256::from(5_u32), U256::from(21_u32));
         let div = mult / U256::from(300_u32);
-        assert_eq!(div, U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5A, 0x9F30_4110_2152_4112]));
+        assert_eq!(
+            div,
+            U256::from_array([0, 0, 0x0001_BD5B_7DDF_BD5A, 0x9F30_4110_2152_4112])
+        );
 
         assert_eq!(U256::from(105_u32) % U256::from(5_u32), U256::ZERO);
-        assert_eq!(U256::from(35498456_u32) % U256::from(3435_u32), U256::from(1166_u32));
-        let rem_src = mult.wrapping_mul(U256::from(39842_u32)).wrapping_add(U256::from(9054_u32));
+        assert_eq!(
+            U256::from(35498456_u32) % U256::from(3435_u32),
+            U256::from(1166_u32)
+        );
+        let rem_src = mult
+            .wrapping_mul(U256::from(39842_u32))
+            .wrapping_add(U256::from(9054_u32));
         assert_eq!(rem_src % U256::from(39842_u32), U256::from(9054_u32));
     }
 
@@ -1273,7 +1415,10 @@ mod tests {
         );
         assert_eq!(!v, want);
 
-        let v = U256(0x0c0c_0c0c_0c0c_0c0c_0c0c_0c0c_0c0c_0c0c, 0xeeee_eeee_eeee_eeee);
+        let v = U256(
+            0x0c0c_0c0c_0c0c_0c0c_0c0c_0c0c_0c0c_0c0c,
+            0xeeee_eeee_eeee_eeee,
+        );
         let want = U256(
             0xf3f3_f3f3_f3f3_f3f3_f3f3_f3f3_f3f3_f3f3,
             0xffff_ffff_ffff_ffff_1111_1111_1111_1111,
@@ -1304,7 +1449,10 @@ mod tests {
         let u224_res = u192_res.mul_u64(0xFFFF_FFFF).0;
         let u256_res = u224_res.mul_u64(0xFFFF_FFFF).0;
 
-        assert_eq!(u96_res, U256::from_array([0, 0, 0xDEAD_BEEE, 0xFFFF_FFFF_2152_4111]));
+        assert_eq!(
+            u96_res,
+            U256::from_array([0, 0, 0xDEAD_BEEE, 0xFFFF_FFFF_2152_4111])
+        );
         assert_eq!(
             u128_res,
             U256::from_array([0, 0, 0xDEAD_BEEE_2152_4110, 0x2152_4111_DEAD_BEEF])
@@ -1434,15 +1582,24 @@ mod tests {
         // we're doing the Right Thing here
         let init = U256::from(0xDEAD_BEEF_DEAD_BEEF_u64);
 
-        assert_eq!(init << 64, U256(0, 0xDEAD_BEEF_DEAD_BEEF_0000_0000_0000_0000));
+        assert_eq!(
+            init << 64,
+            U256(0, 0xDEAD_BEEF_DEAD_BEEF_0000_0000_0000_0000)
+        );
         let add = (init << 64).wrapping_add(init);
         assert_eq!(add, U256(0, 0xDEAD_BEEF_DEAD_BEEF_DEAD_BEEF_DEAD_BEEF));
         assert_eq!(add >> 0, U256(0, 0xDEAD_BEEF_DEAD_BEEF_DEAD_BEEF_DEAD_BEEF));
         assert_eq!(add << 0, U256(0, 0xDEAD_BEEF_DEAD_BEEF_DEAD_BEEF_DEAD_BEEF));
-        assert_eq!(add >> 64, U256(0, 0x0000_0000_0000_0000_DEAD_BEEF_DEAD_BEEF));
+        assert_eq!(
+            add >> 64,
+            U256(0, 0x0000_0000_0000_0000_DEAD_BEEF_DEAD_BEEF)
+        );
         assert_eq!(
             add << 64,
-            U256(0xDEAD_BEEF_DEAD_BEEF, 0xDEAD_BEEF_DEAD_BEEF_0000_0000_0000_0000)
+            U256(
+                0xDEAD_BEEF_DEAD_BEEF,
+                0xDEAD_BEEF_DEAD_BEEF_0000_0000_0000_0000
+            )
         );
     }
 
@@ -1459,7 +1616,10 @@ mod tests {
             assert_eq!(bin_decoded, uint);
         };
 
-        check(U256::ZERO, "0000000000000000000000000000000000000000000000000000000000000000");
+        check(
+            U256::ZERO,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        );
         check(
             U256::from(0xDEADBEEF_u32),
             "00000000000000000000000000000000000000000000000000000000deadbeef",
@@ -1468,7 +1628,10 @@ mod tests {
             U256::from_array([0xdd44, 0xcc33, 0xbb22, 0xaa11]),
             "000000000000dd44000000000000cc33000000000000bb22000000000000aa11",
         );
-        check(U256::MAX, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        check(
+            U256::MAX,
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        );
         check(
             U256(
                 0xDEAD_BEEA_A69B_455C_D41B_B662_A69B_4550,
@@ -1671,23 +1834,33 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn u256_overflowing_addition_panics() { let _ = U256::MAX + U256::ONE; }
+    fn u256_overflowing_addition_panics() {
+        let _ = U256::MAX + U256::ONE;
+    }
 
     #[test]
     #[should_panic]
-    fn u256_overflowing_subtraction_panics() { let _ = U256::ZERO - U256::ONE; }
+    fn u256_overflowing_subtraction_panics() {
+        let _ = U256::ZERO - U256::ONE;
+    }
 
     #[test]
     #[should_panic]
-    fn u256_multiplication_by_max_panics() { let _ = U256::MAX * U256::MAX; }
+    fn u256_multiplication_by_max_panics() {
+        let _ = U256::MAX * U256::MAX;
+    }
 
     #[test]
     #[should_panic]
-    fn work_overflowing_addition_panics() { let _ = Work(U256::MAX) + Work(U256::ONE); }
+    fn work_overflowing_addition_panics() {
+        let _ = Work(U256::MAX) + Work(U256::ONE);
+    }
 
     #[test]
     #[should_panic]
-    fn work_overflowing_subtraction_panics() { let _ = Work(U256::ZERO) - Work(U256::ONE); }
+    fn work_overflowing_subtraction_panics() {
+        let _ = Work(U256::ZERO) - Work(U256::ONE);
+    }
 
     #[test]
     fn u256_to_f64() {
@@ -1698,7 +1871,10 @@ mod tests {
         assert_eq!(U256::MAX.to_f64(), 1.157920892373162e77_f64);
         assert_eq!((U256::MAX >> 1).to_f64(), 5.78960446186581e76_f64);
         assert_eq!((U256::MAX >> 128).to_f64(), 3.402823669209385e38_f64);
-        assert_eq!((U256::MAX >> (256 - 54)).to_f64(), 1.8014398509481984e16_f64);
+        assert_eq!(
+            (U256::MAX >> (256 - 54)).to_f64(),
+            1.8014398509481984e16_f64
+        );
         // 53 bits and below should not use exponents
         assert_eq!((U256::MAX >> (256 - 53)).to_f64(), 9007199254740991.0_f64);
         assert_eq!((U256::MAX >> (256 - 32)).to_f64(), 4294967295.0_f64);

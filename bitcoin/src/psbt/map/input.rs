@@ -6,6 +6,8 @@ use crate::prelude::*;
 use core::convert::TryFrom;
 use core::fmt;
 use core::str::FromStr;
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::bip32::KeySource;
 use crate::blockdata::script::ScriptBuf;
@@ -66,7 +68,6 @@ const PSBT_IN_PROPRIETARY: u8 = 0xFC;
 /// A key-value map for an input of the corresponding index in the unsigned
 /// transaction.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Input {
     /// The non-witness transaction this input spends from. Should only be
@@ -158,6 +159,7 @@ pub struct Input {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct PsbtSighashType {
     pub(in crate::psbt) inner: u32,
 }

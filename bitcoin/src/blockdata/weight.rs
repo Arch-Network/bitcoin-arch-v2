@@ -5,6 +5,9 @@ use core::ops::{Add, AddAssign, Sub, SubAssign, Mul, MulAssign, Div, DivAssign};
 
 use crate::prelude::*;
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 /// Represents block weight - the weight of a transaction or block.
 ///
 /// This is an integer newtype representing weigth in `wu`. It provides protection against mixing
@@ -12,6 +15,7 @@ use crate::prelude::*;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Weight(u64);
 

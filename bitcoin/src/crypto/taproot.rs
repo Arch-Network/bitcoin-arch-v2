@@ -10,14 +10,12 @@ use core::fmt;
 
 use bitcoin_internals::write_err;
 
-use crate::ecdsa::SerializedSignature;
 use crate::{prelude::*, CryptoError};
 
 use crate::sighash::TapSighashType;
 
 /// A BIP340-341 serialized taproot signature with the corresponding hash type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Signature {
     /// The underlying schnorr signature
