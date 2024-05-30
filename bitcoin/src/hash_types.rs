@@ -8,6 +8,9 @@
 //! (e.g. `SHA256d`) but of different meaning (such as transaction id, block
 //! hash).
 //!
+//! 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 
 #[rustfmt::skip]
 macro_rules! impl_hashencode {
@@ -63,7 +66,7 @@ mod newtypes {
         /// other [`sha256d::Hash`] types, are serialized in reverse
         /// byte order when converted to a hex string via [`std::fmt::Display`] trait operations.
         /// See [`hashes::Hash::DISPLAY_BACKWARD`] for more details.
-        pub struct Txid(sha256d::Hash); 
+        pub struct Txid(sha256d::Hash);
 
         /// A bitcoin witness transaction ID.
         pub struct Wtxid(sha256d::Hash);

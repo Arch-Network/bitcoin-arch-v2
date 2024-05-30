@@ -11,6 +11,9 @@ use core::fmt::{self, Write};
 use core::str::FromStr;
 use core::{default, ops};
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use crate::prelude::*;
 
 /// A set of denominations in which amounts can be expressed.
@@ -512,6 +515,7 @@ fn fmt_satoshi_in(
 /// the checked arithmetic methods.
 ///
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct Amount(u64);
 
 impl Amount {
@@ -847,6 +851,7 @@ enum DisplayStyle {
 /// implements will panic when overflow or underflow occurs.
 ///
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct SignedAmount(i64);
 
 impl SignedAmount {

@@ -19,6 +19,10 @@ use crate::prelude::*;
 #[cfg(doc)]
 use crate::relative;
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
+
 /// A relative lock time value, representing either a block height or time (512 second intervals).
 ///
 /// The `relative::LockTime` type does not have any constructors, this is by design, please use
@@ -32,6 +36,7 @@ use crate::relative;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub enum LockTime {
     /// A block height lock time value.
     Blocks(Height),
@@ -203,6 +208,7 @@ impl fmt::Display for LockTime {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct Height(u16);
 
 impl Height {
@@ -253,6 +259,7 @@ impl fmt::Display for Height {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct Time(u16);
 
 impl Time {

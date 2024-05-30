@@ -7,6 +7,8 @@ use core::ops::{Div, Mul};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::amount::Amount;
 use crate::weight::Weight;
@@ -18,6 +20,7 @@ use crate::weight::Weight;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct FeeRate(u64);
 
 impl FeeRate {

@@ -16,6 +16,9 @@ use crate::psbt::Error;
 
 use super::serialize::{Serialize, Deserialize};
 
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 /// A PSBT key in its raw byte form.
 #[derive(Debug, PartialEq, Hash, Eq, Clone, Ord, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -51,6 +54,7 @@ pub type ProprietaryType = u8;
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub struct ProprietaryKey<Subtype=ProprietaryType> where Subtype: Copy + From<u8> + Into<u8> {
     /// Proprietary type prefix used for grouping together keys under some
     /// application and avoid namespace collision

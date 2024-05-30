@@ -35,6 +35,8 @@ use core::{fmt, ops};
 use bitcoin_internals::{debug_from_display, write_err};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
 
 use crate::consensus::encode::{self, Decodable, Encodable};
 use crate::constants::ChainHash;
@@ -63,6 +65,7 @@ pub const PROTOCOL_VERSION: u32 = 70001;
 /// The cryptocurrency network to act on.
 #[derive(Copy, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 #[non_exhaustive]

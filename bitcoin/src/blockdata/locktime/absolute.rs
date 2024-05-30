@@ -14,6 +14,9 @@ use bitcoin_internals::write_err;
 
 #[cfg(all(test, mutate))]
 use mutagen::mutate;
+#[cfg(feature = "borsh")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 
 use crate::consensus::encode::{self, Decodable, Encodable};
 use crate::error::ParseIntError;
@@ -71,6 +74,7 @@ pub const LOCK_TIME_THRESHOLD: u32 = 500_000_000;
 /// ```
 #[allow(clippy::derive_ord_xor_partial_ord)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 pub enum LockTime {
     /// A block height lock time value.
     ///
@@ -387,6 +391,7 @@ impl<'de> serde::Deserialize<'de> for LockTime {
 /// An absolute block height, guaranteed to always contain a valid height value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Height(u32);
 
@@ -474,6 +479,7 @@ impl FromHexStr for Height {
 /// threshold) seconds since epoch'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "borsh", derive(BorshSerialize, BorshDeserialize))]
 #[cfg_attr(feature = "serde", serde(crate = "actual_serde"))]
 pub struct Time(u32);
 
